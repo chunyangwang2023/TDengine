@@ -29,6 +29,9 @@
 #include "trpc.h"
 #include "tsched.h"
 #include "ttime.h"
+#if defined(TD_SLIM)
+#include "dnode.h"
+#endif
 
 #if defined(CUS_NAME) || defined(CUS_PROMPT) || defined(CUS_EMAIL)
 #include "cus_name.h"
@@ -522,6 +525,7 @@ void tscWriteCrashInfo(int signum, void *sigInfo, void *context) {
 }
 
 void taos_init_imp(void) {
+#if !defined(TD_SLIM)
 #if defined(LINUX)
   if (tscDbg.memEnable) {
     int32_t code = taosMemoryDbgInit();
@@ -537,6 +541,8 @@ void taos_init_imp(void) {
   // In the APIs of other program language, taos_cleanup is not available yet.
   // So, to make sure taos_cleanup will be invoked to clean up the allocated resource to suppress the valgrind warning.
   atexit(taos_cleanup);
+#endif
+
   errno = TSDB_CODE_SUCCESS;
   taosSeedRand(taosGetTimestampSec());
 
@@ -546,18 +552,24 @@ void taos_init_imp(void) {
 
   deltaToUtcInitOnce();
 
-  char logDirName[64] = {0};
+  char    logDirName[64] = {0};
+  int32_t logFileNum = 10;
+  bool    isTsc = 1;
 #ifdef CUS_PROMPT
   snprintf(logDirName, 64, "%slog", CUS_PROMPT);
+#elif defined(TD_SLIM)
+  snprintf(logDirName, 64, "taosdlog");
+  logFileNum = 1;
+  isTsc = 0;
 #else
   snprintf(logDirName, 64, "taoslog");
 #endif
-  if (taosCreateLog(logDirName, 10, configDir, NULL, NULL, NULL, NULL, 1) != 0) {
+  if (taosCreateLog(logDirName, logFileNum, configDir, NULL, NULL, NULL, NULL, isTsc) != 0) {
     // ignore create log failed, only print
     printf(" WARING: Create %s failed:%s. configDir=%s\n", logDirName, strerror(errno), configDir);
   }
 
-  if (taosInitCfg(configDir, NULL, NULL, NULL, NULL, 1) != 0) {
+  if (taosInitCfg(configDir, NULL, NULL, NULL, NULL, isTsc) != 0) {
     tscInitRes = -1;
     return;
   }
@@ -594,7 +606,21 @@ void taos_init_imp(void) {
 
   tscCrashReportInit();
 
+#if defined(TD_SLIM)
+  if (dmInit() == 0) {
+    tscInfo("slim is initialized successfully");
+  } else {
+    tscError("failed to init slim since %s", terrstr());
+  }
+  if (dmRun() == 0) {
+    tscInfo("slim is running");
+  } else {
+    tscError("failed to run slim since %s", terrstr());
+    exit(0);
+  }
+#else
   tscDebug("client is initialized successfully");
+#endif
 }
 
 int taos_init() {

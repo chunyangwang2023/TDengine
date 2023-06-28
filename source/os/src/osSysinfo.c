@@ -109,12 +109,14 @@ LONG WINAPI exceptionHandler(LPEXCEPTION_POINTERS exception);
 
 #else
 
+#ifndef _TD_SYLIXOS_
 #include <argp.h>
 #include <linux/sysctl.h>
+#include <sys/syscall.h>
+#endif
 #include <sys/file.h>
 #include <sys/resource.h>
 #include <sys/statvfs.h>
-#include <sys/syscall.h>
 #include <sys/utsname.h>
 #include <unistd.h>
 
@@ -129,7 +131,13 @@ static void taosGetProcIOnfos() {
   tsPageSizeKB = sysconf(_SC_PAGESIZE) / 1024;
   tsOpenMax = sysconf(_SC_OPEN_MAX);
   tsStreamMax = TMAX(sysconf(_SC_STREAM_MAX), 0);
+
+#ifdef _TD_SYLIXOS_
+  tsProcId = (pid_t)getpid();
+#else
   tsProcId = (pid_t)syscall(SYS_gettid);
+#endif
+
 
   snprintf(tsProcMemFile, sizeof(tsProcMemFile), "/proc/%d/status", tsProcId);
   snprintf(tsProcCpuFile, sizeof(tsProcCpuFile), "/proc/%d/stat", tsProcId);
@@ -948,6 +956,11 @@ char *taosGetCmdlineByPID(int pid) {
 #endif
 }
 
+#ifdef _TD_SYLIXOS_
+
+void taosSetCoreDump(bool enable) {}
+#else
+
 void taosSetCoreDump(bool enable) {
   if (!enable) return;
 #ifdef WINDOWS
@@ -1031,6 +1044,8 @@ void taosSetCoreDump(bool enable) {
 #endif
 #endif
 }
+
+#endif
 
 SysNameInfo taosGetSysNameInfo() {
 #ifdef WINDOWS

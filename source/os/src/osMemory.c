@@ -229,6 +229,10 @@ void taosPrintBackTrace() { return; }
 #endif
 
 int32_t taosMemoryDbgInit() {
+#ifdef _TD_SYLIXOS_
+    return TSDB_CODE_FAILED;
+#else
+
 #if defined(LINUX) && !defined(_ALPINE)
   int ret = mallopt(M_MMAP_THRESHOLD, 0);
   if (0 == ret) {
@@ -239,9 +243,14 @@ int32_t taosMemoryDbgInit() {
 #else
   return TSDB_CODE_FAILED;
 #endif
+
+#endif
 }
 
 int32_t taosMemoryDbgInitRestore() {
+#ifdef _TD_SYLIXOS_
+    return TSDB_CODE_FAILED;
+#else
 #if defined(LINUX) && !defined(_ALPINE)
   int ret = mallopt(M_MMAP_THRESHOLD, 128 * 1024);
   if (0 == ret) {
@@ -251,6 +260,8 @@ int32_t taosMemoryDbgInitRestore() {
   return 0;
 #else
   return TSDB_CODE_FAILED;
+#endif
+
 #endif
 }
 
@@ -365,6 +376,8 @@ int64_t taosMemorySize(void *ptr) {
   return _msize(ptr);
 #elif defined(_TD_DARWIN_64)
   return malloc_size(ptr);
+#elif defined(_TD_SYLIXOS_)
+  return 0;
 #else
   return malloc_usable_size(ptr);
 #endif
@@ -372,7 +385,7 @@ int64_t taosMemorySize(void *ptr) {
 }
 
 void taosMemoryTrim(int32_t size) {
-#if defined(WINDOWS) || defined(DARWIN) || defined(_ALPINE)
+#if defined(WINDOWS) || defined(DARWIN) || defined(_ALPINE) || defined(_TD_SYLIXOS_)
   // do nothing
   return;
 #else

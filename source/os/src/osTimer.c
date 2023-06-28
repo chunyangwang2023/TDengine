@@ -75,7 +75,10 @@ void taos_block_sigalrm(void) {
 }
 
 #else
+
+#ifndef _TD_SYLIXOS_
 #include <sys/syscall.h>
+#endif
 #include <unistd.h>
 
 static void taosDeleteTimer(void *tharg) {
@@ -94,13 +97,21 @@ static void         *taosProcessAlarmSignal(void *tharg) {
   sigprocmask(SIG_BLOCK, &sigset, NULL);
   void (*callback)(int) = tharg;
 
+#ifndef _TD_SYLIXOS_
   struct sigevent sevent = {{0}};
+#else
+  struct sigevent sevent;
+  memset(&sevent, 0, sizeof(struct sigevent));
+#endif
 
   setThreadName("tmr");
 
-#ifdef _ALPINE
+#if defined(_ALPINE)
   sevent.sigev_notify = SIGEV_THREAD_ID;
   sevent.sigev_notify_thread_id = syscall(__NR_gettid);
+#elif defined(_TD_SYLIXOS_)
+  sevent.sigev_notify = SIGEV_THREAD;
+  sevent.sigev_value.sival_int = pthread_self();
 #else
   sevent.sigev_notify = SIGEV_THREAD_ID;
   sevent._sigev_un._tid = syscall(__NR_gettid);

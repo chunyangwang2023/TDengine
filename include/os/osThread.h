@@ -25,7 +25,9 @@ extern "C" {
 #if !defined(WINDOWS) && !defined(_ALPINE)
 #ifndef __USE_XOPEN2K
 #define TD_USE_SPINLOCK_AS_MUTEX
-typedef pthread_mutex_t pthread_spinlock_t;
+  #ifndef _TD_SYLIXOS_
+    typedef pthread_mutex_t pthread_spinlock_t;
+  #endif
 #endif
 #endif
 

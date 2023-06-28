@@ -166,7 +166,7 @@ int metaCreateTagIdxKey(tb_uid_t suid, int32_t cid, const void* pTagData, int32_
 // SMetaDB
 int  metaOpenDB(SMeta* pMeta);
 void metaCloseDB(SMeta* pMeta);
-int  metaSaveTableToDB(SMeta* pMeta, STbCfg* pTbCfg, STbDdlH* pHandle);
+// int  metaSaveTableToDB(SMeta* pMeta, STbCfg* pTbCfg, STbDdlH* pHandle);
 int  metaRemoveTableFromDb(SMeta* pMeta, tb_uid_t uid);
 #endif
 

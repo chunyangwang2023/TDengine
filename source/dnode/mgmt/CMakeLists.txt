@@ -7,6 +7,8 @@ add_subdirectory(mgmt_vnode)
 add_subdirectory(mgmt_dnode)
 add_subdirectory(test)
 
+IF(NOT ${BUILD_SLIM})
+
 aux_source_directory(exe EXEC_SRC)
 add_executable(taosd ${EXEC_SRC})
 target_include_directories(
@@ -28,3 +30,4 @@ ELSE ()
     target_link_libraries(taosd dnode)
 ENDIF ()
 
+ENDIF()

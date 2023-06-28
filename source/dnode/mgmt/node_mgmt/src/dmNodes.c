@@ -144,6 +144,11 @@ int32_t dmRunDnode(SDnode *pDnode) {
     return -1;
   }
 
+#if defined(TD_SLIM)
+    dmSendStatusReq(pDnode->wrappers[DNODE].pMgmt);
+    return 0;
+#endif
+
   while (1) {
     if (pDnode->stop) {
       dInfo("The daemon is about to stop");
@@ -162,4 +167,6 @@ int32_t dmRunDnode(SDnode *pDnode) {
     
     taosMsleep(100);
   }
+
+  return 0;
 }

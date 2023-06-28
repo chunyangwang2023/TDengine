@@ -1,6 +1,12 @@
 aux_source_directory(src FUNCTION_SRC)
 aux_source_directory(src/detail FUNCTION_SRC_DETAIL)
 list(REMOVE_ITEM FUNCTION_SRC src/udfd.c)
+
+IF(${BUILD_SLIM})
+    list(REMOVE_ITEM FUNCTION_SRC src/tudf.c)
+    list(APPEND FUNCTION_SRC src/slim/udfSlim.c)
+ENDIF()
+
 add_library(function STATIC ${FUNCTION_SRC} ${FUNCTION_SRC_DETAIL})
 target_include_directories(
     function
@@ -34,8 +40,10 @@ target_link_libraries(
     PRIVATE scalar 
     PRIVATE transport 
     PRIVATE stream ${LINK_JEMALLOC}
-    PUBLIC uv_a
 )
+
+if(NOT ${BUILD_SLIM})
+target_link_libraries(function PUBLIC uv_a)
 
 add_executable(runUdf test/runUdf.c)
 target_include_directories(
@@ -59,6 +67,8 @@ target_link_libraries(
         PUBLIC uv_a
         PRIVATE os util common nodes function ${LINK_JEMALLOC}
 )
+
+endif()
 
 add_library(udf1 STATIC MODULE test/udf1.c)
 target_include_directories(
@@ -139,6 +149,7 @@ target_link_libraries(
     udf2_dup PUBLIC os ${LINK_JEMALLOC}
 )
 
+if(NOT ${BUILD_SLIM})
 #SET(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/build/bin)
 add_executable(udfd src/udfd.c)
 target_include_directories(
@@ -162,4 +173,4 @@ target_link_libraries(
     PUBLIC uv_a
     PRIVATE os util common nodes function ${LINK_JEMALLOC}
     )
-
+endif()

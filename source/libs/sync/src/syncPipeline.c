@@ -484,9 +484,15 @@ _out:
 
 int32_t syncFsmExecute(SSyncNode* pNode, SSyncFSM* pFsm, ESyncState role, SyncTerm term, SSyncRaftEntry* pEntry,
                        int32_t applyCode) {
+#if defined(TD_SLIM)
+  if (pNode->replicaNum == 1 && pNode->restoreFinish) {
+    return 0;
+  }
+#else
   if (pNode->replicaNum == 1 && pNode->restoreFinish && pNode->vgId != 1) {
     return 0;
   }
+#endif
 
   if (pNode->vgId != 1 && syncIsMsgBlock(pEntry->originalRpcType)) {
     sTrace("vgId:%d, blocking msg ready to execute, index:%" PRId64 ", term:%" PRId64 ", type:%s code:0x%x",

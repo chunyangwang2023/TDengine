@@ -168,8 +168,9 @@ int32_t taosGetAppName(char *name, int32_t *len) {
 /*
  * linux implementation
  */
-
+#ifndef _TD_SYLIXOS_
 #include <sys/syscall.h>
+#endif
 #include <unistd.h>
 
 bool taosCheckPthreadValid(TdThread thread) { return thread != 0; }
@@ -177,7 +178,12 @@ bool taosCheckPthreadValid(TdThread thread) { return thread != 0; }
 int64_t taosGetSelfPthreadId() {
   static __thread int id = 0;
   if (id != 0) return id;
+#ifdef _TD_SYLIXOS_
+  id = (pid_t)getpid();
+#else
   id = syscall(SYS_gettid);
+#endif
+
   return id;
 }
 

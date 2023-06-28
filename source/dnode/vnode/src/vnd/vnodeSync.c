@@ -433,7 +433,11 @@ static int32_t vnodeSyncApplyMsg(const SSyncFSM *pFsm, SRpcMsg *pMsg, const SFsm
           pVnode->config.vgId, pFsm, pMeta->index, pMeta->term, pMsg->info.conn.applyIndex, pMeta->isWeak, pMeta->code,
           pMeta->state, syncStr(pMeta->state), TMSG_INFO(pMsg->msgType), pMsg->code);
 
+#if defined(TD_SLIM)
+  return vnodeProcessWriteMsg(pVnode, pMsg, pMsg->info.conn.applyIndex, NULL);
+#else
   return tmsgPutToQueue(&pVnode->msgCb, APPLY_QUEUE, pMsg);
+#endif
 }
 
 static int32_t vnodeSyncCommitMsg(const SSyncFSM *pFsm, SRpcMsg *pMsg, const SFsmCbMeta *pMeta) {

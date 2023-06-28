@@ -830,6 +830,10 @@ static void *hbThreadFunc(void *param) {
 }
 
 static int32_t hbCreateThread() {
+#if defined(TD_SLIM)
+  return 0;
+#endif
+
   TdThreadAttr thAttr;
   taosThreadAttrInit(&thAttr);
   taosThreadAttrSetDetachState(&thAttr, PTHREAD_CREATE_JOINABLE);
@@ -843,6 +847,10 @@ static int32_t hbCreateThread() {
 }
 
 static void hbStopThread() {
+#if defined(TD_SLIM)
+  return;
+#endif
+
   if (0 == atomic_load_8(&clientHbMgr.inited)) {
     return;
   }

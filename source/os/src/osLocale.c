@@ -36,12 +36,15 @@
 #include <errno.h>
 #include <libproc.h>
 #else
+
+#ifndef _TD_SYLIXOS_
 #include <argp.h>
 #include <linux/sysctl.h>
+#include <sys/syscall.h>
+#endif
 #include <sys/file.h>
 #include <sys/resource.h>
 #include <sys/statvfs.h>
-#include <sys/syscall.h>
 #include <sys/utsname.h>
 #include <unistd.h>
 #endif
@@ -76,7 +79,9 @@ char *taosCharsetReplace(char *charsetstr) {
  * In case that the setLocale failed to be executed, the right charset needs to be set.
  */
 void taosSetSystemLocale(const char *inLocale, const char *inCharSet) {
+#ifndef _TD_SYLIXOS_
   char *locale = setlocale(LC_CTYPE, inLocale);
+#endif
 
   // default locale or user specified locale is not valid, abort launch
   if (inLocale == NULL || strlen(inLocale) == 0) {
@@ -171,7 +176,7 @@ void taosGetSystemLocale(char *outLocale, char *outCharset) {
     strcpy(outLocale, "en_US.UTF-8");
   } else {
     tstrncpy(outLocale, locale, TD_LOCALE_LEN);
-    //printf("locale not configured, set to system default:%s\n", outLocale);
+    // printf("locale not configured, set to system default:%s\n", outLocale);
   }
 
   // if user does not specify the charset, extract it from locale

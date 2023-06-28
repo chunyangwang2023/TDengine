@@ -730,18 +730,25 @@ char *tz_win[554][2] = {{"Asia/Shanghai", "China Standard Time"},
 #include <errno.h>
 #include <libproc.h>
 #else
+
+#ifndef _TD_SYLIXOS_
 #include <argp.h>
 #include <linux/sysctl.h>
+#include <sys/syscall.h>
+#endif
 #include <sys/file.h>
 #include <sys/resource.h>
 #include <sys/statvfs.h>
-#include <sys/syscall.h>
 #include <sys/utsname.h>
 #include <unistd.h>
 #endif
 
 void taosSetSystemTimezone(const char *inTimezoneStr, char *outTimezoneStr, int8_t *outDaylight,
                            enum TdTimezone *tsTimezone) {
+#ifdef _TD_SYLIXOS_
+    int daylight = 0;
+#endif
+
   if (inTimezoneStr == NULL || inTimezoneStr[0] == 0) return;
 
   size_t len = strlen(inTimezoneStr);
@@ -825,6 +832,10 @@ void taosSetSystemTimezone(const char *inTimezoneStr, char *outTimezoneStr, int8
 }
 
 void taosGetSystemTimezone(char *outTimezoneStr, enum TdTimezone *tsTimezone) {
+#ifdef _TD_SYLIXOS_
+    int daylight = 0;
+#endif
+
 #ifdef WINDOWS
   char  value[100];
   char  keyPath[100];
@@ -1016,7 +1027,12 @@ void taosGetSystemTimezone(char *outTimezoneStr, enum TdTimezone *tsTimezone) {
    * Asia/Shanghai   (CST, +0800)
    * Europe/London   (BST, +0100)
    */
+#ifdef _TD_SYLIXOS_
+  snprintf(outTimezoneStr, TD_TIMEZONE_LEN, "%s (%s, %+03lld00)", tz, tm1.tm_isdst ? tzname[daylight] : tzname[0],
+           -timezone / 3600);
+#else
   snprintf(outTimezoneStr, TD_TIMEZONE_LEN, "%s (%s, %+03ld00)", tz, tm1.tm_isdst ? tzname[daylight] : tzname[0],
            -timezone / 3600);
+#endif
 #endif
 }
