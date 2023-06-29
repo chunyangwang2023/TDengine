@@ -27,9 +27,6 @@
 #include "tref.h"
 #include "trpc.h"
 #include "version.h"
-#if defined(TD_SLIM)
-#include "dnode.h"
-#endif
 
 #define TSC_VAR_NOT_RELEASE 1
 #define TSC_VAR_RELEASED    0
@@ -86,9 +83,7 @@ void taos_cleanup(void) {
 
   tscInfo("all local resources released");
 
-#if defined(TD_SLIM)
-  dmCleanup();
-#else
+#if !defined(TD_SLIM)
   taosCleanupCfg();
   taosCloseLog();
 #endif

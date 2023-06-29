@@ -16,7 +16,7 @@ target_include_directories(
 target_link_libraries(
     taos
     INTERFACE api
-    PRIVATE os util common transport nodes parser command planner catalog scheduler function qcom ${LINK_DNODE}
+    PRIVATE os util common transport nodes parser command planner catalog scheduler function qcom
 )
 
 if(TD_DARWIN_ARM64)
@@ -57,7 +57,7 @@ target_include_directories(
 target_link_libraries(
     taos_static
     INTERFACE api
-    PRIVATE os util common transport nodes parser command planner catalog scheduler function qcom ${LINK_DNODE}
+    PRIVATE os util common transport nodes parser command planner catalog scheduler function qcom
 )
 
 if(${BUILD_TEST})

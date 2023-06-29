@@ -29,9 +29,6 @@
 #include "trpc.h"
 #include "tsched.h"
 #include "ttime.h"
-#if defined(TD_SLIM)
-#include "dnode.h"
-#endif
 
 #if defined(CUS_NAME) || defined(CUS_PROMPT) || defined(CUS_EMAIL)
 #include "cus_name.h"
@@ -552,27 +549,24 @@ void taos_init_imp(void) {
 
   deltaToUtcInitOnce();
 
-  char    logDirName[64] = {0};
-  int32_t logFileNum = 10;
-  bool    isTsc = 1;
+  char logDirName[64] = {0};
 #ifdef CUS_PROMPT
   snprintf(logDirName, 64, "%slog", CUS_PROMPT);
-#elif defined(TD_SLIM)
-  snprintf(logDirName, 64, "taosdlog");
-  logFileNum = 1;
-  isTsc = 0;
 #else
   snprintf(logDirName, 64, "taoslog");
 #endif
-  if (taosCreateLog(logDirName, logFileNum, configDir, NULL, NULL, NULL, NULL, isTsc) != 0) {
+
+#if !defined(TD_SLIM)
+  if (taosCreateLog(logDirName, 10, configDir, NULL, NULL, NULL, NULL, 1) != 0) {
     // ignore create log failed, only print
     printf(" WARING: Create %s failed:%s. configDir=%s\n", logDirName, strerror(errno), configDir);
   }
 
-  if (taosInitCfg(configDir, NULL, NULL, NULL, NULL, isTsc) != 0) {
+  if (taosInitCfg(configDir, NULL, NULL, NULL, NULL, 1) != 0) {
     tscInitRes = -1;
     return;
   }
+#endif
 
   initQueryModuleMsgHandle();
 
@@ -606,21 +600,7 @@ void taos_init_imp(void) {
 
   tscCrashReportInit();
 
-#if defined(TD_SLIM)
-  if (dmInit() == 0) {
-    tscInfo("slim is initialized successfully");
-  } else {
-    tscError("failed to init slim since %s", terrstr());
-  }
-  if (dmRun() == 0) {
-    tscInfo("slim is running");
-  } else {
-    tscError("failed to run slim since %s", terrstr());
-    exit(0);
-  }
-#else
   tscDebug("client is initialized successfully");
-#endif
 }
 
 int taos_init() {
