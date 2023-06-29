@@ -295,7 +295,7 @@ int32_t taosAddClientLogCfg(SConfig *pCfg) {
   return 0;
 }
 
-static int32_t taosAddServerLogCfg(SConfig *pCfg) {
+int32_t taosAddServerLogCfg(SConfig *pCfg) {
   if (cfgAddInt32(pCfg, "dDebugFlag", dDebugFlag, 0, 255, 0) != 0) return -1;
   if (cfgAddInt32(pCfg, "vDebugFlag", vDebugFlag, 0, 255, 0) != 0) return -1;
   if (cfgAddInt32(pCfg, "mDebugFlag", mDebugFlag, 0, 255, 0) != 0) return -1;
@@ -312,7 +312,7 @@ static int32_t taosAddServerLogCfg(SConfig *pCfg) {
   return 0;
 }
 
-static int32_t taosAddClientCfg(SConfig *pCfg) {
+int32_t taosAddClientCfg(SConfig *pCfg) {
   char    defaultFqdn[TSDB_FQDN_LEN] = {0};
   int32_t defaultServerPort = 6030;
   if (taosGetFqdn(defaultFqdn) != 0) {
@@ -366,7 +366,7 @@ static int32_t taosAddClientCfg(SConfig *pCfg) {
   return 0;
 }
 
-static int32_t taosAddSystemCfg(SConfig *pCfg) {
+int32_t taosAddSystemCfg(SConfig *pCfg) {
   SysNameInfo info = taosGetSysNameInfo();
 
   if (cfgAddTimezone(pCfg, "timezone", tsTimezoneStr) != 0) return -1;
@@ -402,7 +402,7 @@ static int32_t taosAddSystemCfg(SConfig *pCfg) {
   return 0;
 }
 
-static int32_t taosAddServerCfg(SConfig *pCfg) {
+int32_t taosAddServerCfg(SConfig *pCfg) {
   if (cfgAddDir(pCfg, "dataDir", tsDataDir, 0) != 0) return -1;
   if (cfgAddFloat(pCfg, "minimalDataDirGB", 2.0f, 0.001f, 10000000, 0) != 0) return -1;
 
@@ -517,7 +517,7 @@ static int32_t taosAddServerCfg(SConfig *pCfg) {
   return 0;
 }
 
-static int32_t taosUpdateServerCfg(SConfig *pCfg) {
+int32_t taosUpdateServerCfg(SConfig *pCfg) {
   SConfigItem *pItem;
   ECfgSrcType  stype;
   int32_t      numOfCores;
@@ -692,55 +692,7 @@ static void taosSetServerLogCfg(SConfig *pCfg) {
   metaDebugFlag = cfgGetItem(pCfg, "metaDebugFlag")->i32;
 }
 
-static void taosSetSlimCfg(SConfig *pCfg){
-  tstrncpy(tsLocalFqdn, "localhost", TSDB_FQDN_LEN);
-  tstrncpy(tsLocalEp, "localhost:6030", TSDB_EP_LEN);
-  tstrncpy(tsFirst, "localhost:6030", TSDB_EP_LEN);
-  tstrncpy(tsSecond, "localhost:6030", TSDB_EP_LEN);
-  tsServerPort = 6030;
-  tsUseAdapter = false;
-  tsEnableMonitor = false;
-  tsEnableTelem = false;
-  tsEnableCrashReport = false;
-  tsStartUdfd = false;
-  tsAsyncLog = 0;
-  tsNumOfRpcThreads = 0;
-  tsNumOfCommitThreads = 1;
-  tsNumOfTaskQueueThreads = 1;
-  tsNumOfMnodeQueryThreads = 1;
-  tsNumOfMnodeFetchThreads = 1;
-  tsNumOfMnodeReadThreads = 1;
-  tsNumOfVnodeQueryThreads = 1;
-  tsNumOfVnodeFetchThreads = 1;
-  tsNumOfVnodeRsmaThreads = 0;
-  tsNumOfQnodeQueryThreads = 0;
-  tsNumOfQnodeFetchThreads = 0;
-  tsNumOfSnodeStreamThreads = 0;
-  tsNumOfSnodeWriteThreads = 0;
-
-  cfgSetItem(pCfg, "firstEp", tsFirst, cfgGetItem(pCfg, "firstEp")->stype);
-  cfgSetItem(pCfg, "secondEp", tsSecond, cfgGetItem(pCfg, "secondEp")->stype);
-  cfgSetItem(pCfg, "fqdn", tsLocalFqdn, cfgGetItem(pCfg, "fqdn")->stype);
-  cfgSetItem(pCfg, "serverPort", (const char *)&tsServerPort, cfgGetItem(pCfg, "serverPort")->stype);
-  cfgSetItem(pCfg, "useAdapter", (const char *)&tsUseAdapter, cfgGetItem(pCfg, "useAdapter")->stype);
-  cfgSetItem(pCfg, "monitor", (const char *)&tsEnableMonitor, cfgGetItem(pCfg, "monitor")->stype);
-  cfgSetItem(pCfg, "telemetryReporting", (const char *)&tsEnableTelem, cfgGetItem(pCfg, "telemetryReporting")->stype);
-  cfgSetItem(pCfg, "crashReporting", (const char *)&tsEnableCrashReport, cfgGetItem(pCfg, "crashReporting")->stype);
-  cfgSetItem(pCfg, "udf", (const char *)&tsStartUdfd, cfgGetItem(pCfg, "udf")->stype);
-  cfgSetItem(pCfg, "asyncLog", (const char *)&tsAsyncLog, cfgGetItem(pCfg, "asyncLog")->stype);
-  cfgGetItem(pCfg, "numOfRpcThreads")->i32 = tsNumOfRpcThreads;
-  cfgGetItem(pCfg, "numOfCommitThreads")->i32 = tsNumOfCommitThreads;
-  cfgGetItem(pCfg, "numOfTaskQueueThreads")->i32 = tsNumOfTaskQueueThreads;
-  cfgGetItem(pCfg, "numOfMnodeReadThreads")->i32 = tsNumOfMnodeReadThreads;
-  cfgGetItem(pCfg, "numOfVnodeQueryThreads")->i32 = tsNumOfVnodeQueryThreads;
-  cfgGetItem(pCfg, "numOfVnodeFetchThreads")->i32 = tsNumOfVnodeFetchThreads;
-  cfgGetItem(pCfg, "numOfVnodeRsmaThreads")->i32 = tsNumOfVnodeRsmaThreads;
-  cfgGetItem(pCfg, "numOfQnodeQueryThreads")->i32 = tsNumOfQnodeQueryThreads;
-  cfgGetItem(pCfg, "numOfSnodeSharedThreads")->i32 = tsNumOfSnodeStreamThreads;
-  cfgGetItem(pCfg, "numOfSnodeUniqueThreads")->i32 = tsNumOfSnodeWriteThreads;
-}
-
-static int32_t taosSetClientCfg(SConfig *pCfg) {
+int32_t taosSetClientCfg(SConfig *pCfg) {
   tstrncpy(tsLocalFqdn, cfgGetItem(pCfg, "fqdn")->str, TSDB_FQDN_LEN);
   tsServerPort = (uint16_t)cfgGetItem(pCfg, "serverPort")->i32;
   snprintf(tsLocalEp, sizeof(tsLocalEp), "%s:%u", tsLocalFqdn, tsServerPort);
@@ -800,7 +752,7 @@ static int32_t taosSetClientCfg(SConfig *pCfg) {
   return 0;
 }
 
-static void taosSetSystemCfg(SConfig *pCfg) {
+void taosSetSystemCfg(SConfig *pCfg) {
   SConfigItem *pItem = cfgGetItem(pCfg, "timezone");
   osSetTimezone(pItem->str);
   uDebug("timezone format changed from %s to %s", pItem->str, tsTimezoneStr);
@@ -820,7 +772,7 @@ static void taosSetSystemCfg(SConfig *pCfg) {
   tsVersion = 30000000;
 }
 
-static int32_t taosSetServerCfg(SConfig *pCfg) {
+int32_t taosSetServerCfg(SConfig *pCfg) {
   tsDataSpace.reserved = (int64_t)(((double)cfgGetItem(pCfg, "minimalDataDirGB")->fval) * 1024 * 1024 * 1024);
   tsNumOfSupportVnodes = cfgGetItem(pCfg, "supportVnodes")->i32;
   tsMaxShellConns = cfgGetItem(pCfg, "maxShellConns")->i32;
@@ -1338,7 +1290,7 @@ int32_t taosCreateLog(const char *logname, int32_t logFileNum, const char *cfgDi
   return 0;
 }
 
-static int32_t taosCheckGlobalCfg() {
+int32_t taosCheckGlobalCfg() {
   uint32_t ipv4 = taosGetIpv4FromFqdn(tsLocalFqdn);
   if (ipv4 == 0xffffffff) {
     terrno = TAOS_SYSTEM_ERROR(errno);
@@ -1393,10 +1345,6 @@ int32_t taosInitCfg(const char *cfgDir, const char **envCmd, const char *envFile
     if (taosSetTfsCfg(tsCfg) != 0) return -1;
   }
   taosSetSystemCfg(tsCfg);
-
-#if defined(TD_SLIM)
-  taosSetSlimCfg(tsCfg);
-#endif
 
   cfgDumpCfg(tsCfg, tsc, false);
 
