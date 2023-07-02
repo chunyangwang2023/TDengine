@@ -434,7 +434,21 @@ static int32_t vnodeSyncApplyMsg(const SSyncFSM *pFsm, SRpcMsg *pMsg, const SFsm
           pMeta->state, syncStr(pMeta->state), TMSG_INFO(pMsg->msgType), pMsg->code);
 
 #if defined(TD_SLIM)
-  return vnodeProcessWriteMsg(pVnode, pMsg, pMsg->info.conn.applyIndex, NULL);
+  SRpcMsg rsp = {.code = pMsg->code, .info = pMsg->info};
+
+  if (vnodeProcessWriteMsg(pVnode, pMsg, pMsg->info.conn.applyIndex, &rsp) < 0) {
+    rsp.code = terrno;
+    vGError("vgId:%d, msg:%p failed to apply since %s, index:%" PRId64, pVnode->config.vgId, pMsg, terrstr(),
+            pMsg->info.conn.applyIndex);
+  }
+  if (rsp.info.handle != NULL) {
+    tmsgSendRsp(&rsp);
+  } else {
+    if (rsp.pCont) {
+      rpcFreeCont(rsp.pCont);
+    }
+  }
+  return rsp.code;
 #else
   return tmsgPutToQueue(&pVnode->msgCb, APPLY_QUEUE, pMsg);
 #endif
