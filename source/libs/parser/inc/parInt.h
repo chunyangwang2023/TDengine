@@ -34,7 +34,9 @@ int32_t authenticate(SParseContext* pParseCxt, SQuery* pQuery, SParseMetaCache* 
 int32_t translate(SParseContext* pParseCxt, SQuery* pQuery, SParseMetaCache* pMetaCache);
 int32_t extractResultSchema(const SNode* pRoot, int32_t* numOfCols, SSchema** pSchema);
 int32_t calculateConstant(SParseContext* pParseCxt, SQuery* pQuery);
-int32_t slimQuery(SParseContext* pParseCxt, SQuery* pQuery);
+int32_t slimCheckQuery(SParseContext* pParseCxt, SQuery* pQuery);
+int32_t slimCheckCol(int32_t type);
+int32_t slimCheckDb(const char* db);
 
 #ifdef __cplusplus
 }

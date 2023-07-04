@@ -2621,6 +2621,10 @@ static int32_t translateTable(STranslateContext* pCxt, SNode* pTable) {
   switch (nodeType(pTable)) {
     case QUERY_NODE_REAL_TABLE: {
       SRealTableNode* pRealTable = (SRealTableNode*)pTable;
+#if defined(TD_SLIM)
+      code = slimCheckDb(pRealTable->table.dbName);
+      if (code != TSDB_CODE_SUCCESS) break;
+#endif
       pRealTable->ratio = (NULL != pCxt->pExplainOpt ? pCxt->pExplainOpt->ratio : 1.0);
       // The SRealTableNode created through ROLLUP already has STableMeta.
       if (NULL == pRealTable->pMeta) {
@@ -4596,6 +4600,10 @@ static int32_t checkTableTagsSchema(STranslateContext* pCxt, SHashObj* pHash, SN
         code = generateSyntaxErrMsg(&pCxt->msgBuf, TSDB_CODE_PAR_INVALID_VAR_COLUMN_LEN);
       }
     }
+#if defined(TD_SLIM)
+    code = slimCheckCol(pTag->dataType.type);
+    if (code != TSDB_CODE_SUCCESS) break;
+#endif
     if (TSDB_CODE_SUCCESS == code) {
       code = taosHashPut(pHash, pTag->colName, len, &pTag, POINTER_BYTES);
     }
@@ -4634,6 +4642,13 @@ static int32_t checkTableColsSchema(STranslateContext* pCxt, SHashObj* pHash, in
         code = generateSyntaxErrMsg(&pCxt->msgBuf, TSDB_CODE_PAR_INVALID_FIRST_COLUMN);
       }
     }
+
+#if defined(TD_SLIM)
+    code = slimCheckCol(pCol->dataType.type);
+    if (code != TSDB_CODE_SUCCESS) break;
+#endif
+
+    if (pCol->dataType.type == TSDB_DATA_TYPE_JSON || pCol->dataType.type == TSDB_DATA_TYPE_NCHAR)
     if (TSDB_CODE_SUCCESS == code && pCol->dataType.type == TSDB_DATA_TYPE_JSON) {
       code = generateSyntaxErrMsg(&pCxt->msgBuf, TSDB_CODE_PAR_INVALID_COL_JSON);
     }
@@ -8790,7 +8805,7 @@ int32_t translate(SParseContext* pParseCxt, SQuery* pQuery, SParseMetaCache* pMe
   int32_t code = initTranslateContext(pParseCxt, pMetaCache, &cxt);
 #if defined(TD_SLIM)
   if (TSDB_CODE_SUCCESS == code) {
-    code = slimQuery(pParseCxt, pQuery);
+    code = slimCheckQuery(pParseCxt, pQuery);
   }
 #endif
 
