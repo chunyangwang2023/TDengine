@@ -8505,6 +8505,13 @@ static void destoryAlterTbReq(SVAlterTbReq* pReq) {
 
 static int32_t rewriteAlterTableImpl(STranslateContext* pCxt, SAlterTableStmt* pStmt, STableMeta* pTableMeta,
                                      SQuery* pQuery) {
+#if defined(TD_SLIM)
+  if (TSDB_CHILD_TABLE != pTableMeta->tableType) {
+    terrno = TSDB_CODE_OPS_NOT_SUPPORT;
+    return terrno;
+  }
+#endif
+
   if (TSDB_SUPER_TABLE == pTableMeta->tableType) {
     return TSDB_CODE_SUCCESS;
   } else if (TSDB_CHILD_TABLE != pTableMeta->tableType && TSDB_NORMAL_TABLE != pTableMeta->tableType) {
