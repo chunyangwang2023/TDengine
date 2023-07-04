@@ -8788,6 +8788,12 @@ int32_t translate(SParseContext* pParseCxt, SQuery* pQuery, SParseMetaCache* pMe
   STranslateContext cxt = {0};
 
   int32_t code = initTranslateContext(pParseCxt, pMetaCache, &cxt);
+#if defined(TD_SLIM)
+  if (TSDB_CODE_SUCCESS == code) {
+    code = slimQuery(pParseCxt, pQuery);
+  }
+#endif
+
   if (TSDB_CODE_SUCCESS == code) {
     code = rewriteQuery(&cxt, pQuery);
   }
