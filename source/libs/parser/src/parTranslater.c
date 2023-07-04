@@ -2622,7 +2622,7 @@ static int32_t translateTable(STranslateContext* pCxt, SNode* pTable) {
     case QUERY_NODE_REAL_TABLE: {
       SRealTableNode* pRealTable = (SRealTableNode*)pTable;
 #if defined(TD_SLIM)
-      code = slimCheckDb(pRealTable->table.dbName);
+      code = slimCheckDbTable(pRealTable->table.dbName, pRealTable->table.tableName);
       if (code != TSDB_CODE_SUCCESS) break;
 #endif
       pRealTable->ratio = (NULL != pCxt->pExplainOpt ? pCxt->pExplainOpt->ratio : 1.0);

@@ -36,7 +36,7 @@ int32_t extractResultSchema(const SNode* pRoot, int32_t* numOfCols, SSchema** pS
 int32_t calculateConstant(SParseContext* pParseCxt, SQuery* pQuery);
 int32_t slimCheckQuery(SParseContext* pParseCxt, SQuery* pQuery);
 int32_t slimCheckCol(int32_t type);
-int32_t slimCheckDb(const char* db);
+int32_t slimCheckDbTable(const char* db, const char *table);
 
 #ifdef __cplusplus
 }
