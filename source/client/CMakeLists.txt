@@ -1,5 +1,7 @@
 aux_source_directory(src CLIENT_SRC)
 
+IF(NOT ${BUILD_SLIM})
+
 if(TD_WINDOWS)
     add_library(taos SHARED ${CLIENT_SRC} ${CMAKE_CURRENT_SOURCE_DIR}/src/taos.rc.in)
 else()
@@ -48,11 +50,15 @@ set_target_properties(
     SOVERSION 1
 )
 
+endif()
+
 add_library(taos_static STATIC ${CLIENT_SRC})
 target_include_directories(
     taos_static
     PUBLIC "${TD_SOURCE_DIR}/include/client"
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/inc"
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/jni"
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/jni/linux"
 )
 target_link_libraries(
     taos_static
