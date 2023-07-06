@@ -2415,11 +2415,13 @@ static int32_t setVnodeSysTableVgroupList(STranslateContext* pCxt, SName* pName,
     ((SSelectStmt*)pCxt->pCurrStmt)->isEmptyResult = true;
   }
 
+#if !defined(TD_SLIM)
   if (TSDB_CODE_SUCCESS == code &&
           (0 == strcmp(pRealTable->table.tableName, TSDB_INS_TABLE_TABLES) && !hasUserDbCond) ||
       0 == strcmp(pRealTable->table.tableName, TSDB_INS_TABLE_COLS)) {
     code = addMnodeToVgroupList(&pCxt->pParseCxt->mgmtEpSet, &pVgs);
   }
+#endif
 
   if (TSDB_CODE_SUCCESS == code) {
     code = toVgroupsInfo(pVgs, &pRealTable->pVgroupList);
@@ -2622,7 +2624,7 @@ static int32_t translateTable(STranslateContext* pCxt, SNode* pTable) {
     case QUERY_NODE_REAL_TABLE: {
       SRealTableNode* pRealTable = (SRealTableNode*)pTable;
 #if defined(TD_SLIM)
-      code = slimCheckDb(pRealTable->table.dbName);
+      code = slimCheckDbTable(pRealTable->table.dbName, pRealTable->table.tableName);
       if (code != TSDB_CODE_SUCCESS) break;
 #endif
       pRealTable->ratio = (NULL != pCxt->pExplainOpt ? pCxt->pExplainOpt->ratio : 1.0);
@@ -8505,6 +8507,13 @@ static void destoryAlterTbReq(SVAlterTbReq* pReq) {
 
 static int32_t rewriteAlterTableImpl(STranslateContext* pCxt, SAlterTableStmt* pStmt, STableMeta* pTableMeta,
                                      SQuery* pQuery) {
+#if defined(TD_SLIM)
+  if (TSDB_CHILD_TABLE != pTableMeta->tableType) {
+    terrno = TSDB_CODE_OPS_NOT_SUPPORT;
+    return terrno;
+  }
+#endif
+
   if (TSDB_SUPER_TABLE == pTableMeta->tableType) {
     return TSDB_CODE_SUCCESS;
   } else if (TSDB_CHILD_TABLE != pTableMeta->tableType && TSDB_NORMAL_TABLE != pTableMeta->tableType) {
