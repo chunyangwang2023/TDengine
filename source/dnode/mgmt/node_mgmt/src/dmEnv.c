@@ -123,6 +123,10 @@ void dmCleanup() {
   dDebug("start to cleanup dnode env");
   SDnode *pDnode = dmInstance();
   if (dmCheckRepeatCleanup(pDnode) != 0) return;
+
+  dmSetStatus(pDnode, DND_STAT_STOPPED);
+  dmStopNodes(pDnode);
+  dmCloseNodes(pDnode);
   dmCleanupDnode(pDnode);
   monCleanup();
   syncCleanUp();
