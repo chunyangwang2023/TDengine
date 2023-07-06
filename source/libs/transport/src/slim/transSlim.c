@@ -178,12 +178,12 @@ int32_t rpcSendRequestWithCtx(void* shandle, const SEpSet* pEpSet, SRpcMsg* pMsg
 }
 
 int rpcSendRecv(void* shandle, SEpSet* pEpSet, SRpcMsg* pMsg, SRpcMsg* pRsp) {
-  tsem_t* sem = taosMemoryCalloc(1, sizeof(tsem_t));
-  tsem_init(sem, 0, 0);
+  tsem_t sem = {0};
+  tsem_init(&sem, 0, 0);
   SSlimCtx* pCtx = taosMemoryCalloc(1, sizeof(SSlimCtx));
   pCtx->ahandle = pMsg->info.ahandle;
   pCtx->msgType = pMsg->msgType;
-  pCtx->pSem = sem;
+  pCtx->pSem = &sem;
   pCtx->pRsp = pRsp;
 
   SRpcInit* pRpc = tsRpcHandle[TMSG_INDEX(pMsg->msgType)];
@@ -192,9 +192,9 @@ int rpcSendRecv(void* shandle, SEpSet* pEpSet, SRpcMsg* pMsg, SRpcMsg* pRsp) {
   pMsg->info.handle = shandle;
   tstrncpy(pMsg->info.conn.user, tscUser, TSDB_USER_LEN);
   (pRpc->cfp)(pRpc->parent, pMsg, NULL);
-  tsem_wait(sem);
+  tsem_wait(&sem);
 
-  tsem_destroy(pCtx->pSem);
+  tsem_destroy(&sem);
   taosMemoryFree(pCtx);
   return 0;
 }
