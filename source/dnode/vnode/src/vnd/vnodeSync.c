@@ -447,6 +447,10 @@ static int32_t vnodeSyncApplyMsg(const SSyncFSM *pFsm, SRpcMsg *pMsg, const SFsm
     if (rsp.pCont) {
       rpcFreeCont(rsp.pCont);
     }
+    if (pMsg->msgType == TDMT_SYNC_NOOP) {
+      rpcFreeCont(pMsg->pCont);
+      pMsg->pCont = NULL;
+    }
   }
   return rsp.code;
 #else
