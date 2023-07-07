@@ -177,6 +177,11 @@ int32_t asyncSendMsgToServerExt(void* pTransporter, SEpSet* epSet, int64_t* pTra
   if (code) {
     destroySendMsgInfo(pInfo);
   }
+#if defined(TD_SLIM)
+  if (code == 0 && rpcMsg.msgType == TDMT_SCH_DROP_TASK) {
+    destroySendMsgInfo(pInfo);
+  }
+#endif
   return code;
 }
 
