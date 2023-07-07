@@ -847,10 +847,6 @@ static int32_t hbCreateThread() {
 }
 
 static void hbStopThread() {
-#if defined(TD_SLIM)
-  return;
-#endif
-
   if (0 == atomic_load_8(&clientHbMgr.inited)) {
     return;
   }
@@ -858,6 +854,10 @@ static void hbStopThread() {
     tscDebug("hb thread already stopped");
     return;
   }
+
+#if defined(TD_SLIM)
+  return;
+#endif
 
   // thread quit mode kill or inner exit from self-thread
   if (clientHbMgr.quitByKill) {

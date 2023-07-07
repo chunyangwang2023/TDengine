@@ -112,6 +112,7 @@ int32_t initTaskQueue() {
 
 int32_t cleanupTaskQueue() {
   taosCleanUpScheduler(&pTaskQueue);
+  memset(&pTaskQueue, 0, sizeof(SSchedQueue));
   return 0;
 }
 
