@@ -5,7 +5,10 @@ add_subdirectory(mgmt_qnode)
 add_subdirectory(mgmt_snode)
 add_subdirectory(mgmt_vnode)
 add_subdirectory(mgmt_dnode)
-add_subdirectory(test)
+
+if(${BUILD_TEST})
+  add_subdirectory(test)
+endif()
 
 IF(NOT ${BUILD_SLIM})
 
