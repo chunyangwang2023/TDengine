@@ -2196,6 +2196,7 @@ const SBuiltinFuncDefinition funcMgtBuiltins[] = {
     .pPartialFunc = "max",
     .pMergeFunc   = "max"
   },
+#if !defined(TD_SLIM)  
   {
     .name = "stddev",
     .type = FUNCTION_TYPE_STDDEV,
@@ -2248,6 +2249,7 @@ const SBuiltinFuncDefinition funcMgtBuiltins[] = {
     .invertFunc   = NULL,
     .combineFunc  = leastSQRCombine,
   },
+#endif
   {
     .name = "avg",
     .type = FUNCTION_TYPE_AVG,
@@ -2289,6 +2291,7 @@ const SBuiltinFuncDefinition funcMgtBuiltins[] = {
     .invertFunc   = avgInvertFunction,
     .combineFunc  = avgCombine,
   },
+#if !defined(TD_SLIM)
   {
     .name = "percentile",
     .type = FUNCTION_TYPE_PERCENTILE,
@@ -2489,6 +2492,7 @@ const SBuiltinFuncDefinition funcMgtBuiltins[] = {
     .sprocessFunc = irateScalarFunction,
     .finalizeFunc = irateFinalize
   },
+#endif
   {
     .name = "last_row",
     .type = FUNCTION_TYPE_LAST_ROW,
@@ -2583,6 +2587,7 @@ const SBuiltinFuncDefinition funcMgtBuiltins[] = {
     .finalizeFunc = firstLastFinalize,
     .combineFunc  = firstCombine,
   },
+#if !defined(TD_SLIM)
   {
     .name = "last",
     .type = FUNCTION_TYPE_LAST,
@@ -2819,6 +2824,7 @@ const SBuiltinFuncDefinition funcMgtBuiltins[] = {
     .sprocessFunc = modeScalarFunction,
     .finalizeFunc = modeFinalize,
   },
+#endif
   {
     .name = "abs",
     .type = FUNCTION_TYPE_ABS,
@@ -2829,6 +2835,7 @@ const SBuiltinFuncDefinition funcMgtBuiltins[] = {
     .sprocessFunc = absFunction,
     .finalizeFunc = NULL
   },
+#if !defined(TD_SLIM)
   {
     .name = "log",
     .type = FUNCTION_TYPE_LOG,
@@ -2839,6 +2846,7 @@ const SBuiltinFuncDefinition funcMgtBuiltins[] = {
     .sprocessFunc = logFunction,
     .finalizeFunc = NULL
   },
+#endif
   {
     .name = "pow",
     .type = FUNCTION_TYPE_POW,
@@ -2889,6 +2897,7 @@ const SBuiltinFuncDefinition funcMgtBuiltins[] = {
     .sprocessFunc = roundFunction,
     .finalizeFunc = NULL
   },
+#if !defined(TD_SLIM)
   {
     .name = "sin",
     .type = FUNCTION_TYPE_SIN,
@@ -3089,6 +3098,7 @@ const SBuiltinFuncDefinition funcMgtBuiltins[] = {
     .sprocessFunc = timeDiffFunction,
     .finalizeFunc = NULL
   },
+#endif
   {
     .name = "now",
     .type = FUNCTION_TYPE_NOW,
@@ -3159,6 +3169,7 @@ const SBuiltinFuncDefinition funcMgtBuiltins[] = {
     .sprocessFunc = NULL,
     .finalizeFunc = NULL
   },
+#if !defined(TD_SLIM)
   {
     .name = "_wstart",
     .type = FUNCTION_TYPE_WSTART,
@@ -3199,6 +3210,7 @@ const SBuiltinFuncDefinition funcMgtBuiltins[] = {
     .sprocessFunc = toJsonFunction,
     .finalizeFunc = NULL
   },
+#endif
   {
     .name = "_select_value",
     .type = FUNCTION_TYPE_SELECT_VALUE,
@@ -3240,12 +3252,14 @@ const SBuiltinFuncDefinition funcMgtBuiltins[] = {
     .pPartialFunc = "_group_key",
     .pMergeFunc   = "_group_key"
   },
+#if !defined(TD_SLIM)
   {
     .name = "database",
     .type = FUNCTION_TYPE_DATABASE,
     .classification = FUNC_MGT_SYSTEM_INFO_FUNC | FUNC_MGT_SCALAR_FUNC,
     .translateFunc = translateDatabaseFunc,
   },
+#endif
   {
     .name = "client_version",
     .type = FUNCTION_TYPE_CLIENT_VERSION,
@@ -3264,6 +3278,7 @@ const SBuiltinFuncDefinition funcMgtBuiltins[] = {
     .classification = FUNC_MGT_SYSTEM_INFO_FUNC | FUNC_MGT_SCALAR_FUNC,
     .translateFunc = translateServerStatusFunc,
   },
+#if !defined(TD_SLIM)
   {
     .name = "current_user",
     .type = FUNCTION_TYPE_CURRENT_USER,
@@ -3286,6 +3301,7 @@ const SBuiltinFuncDefinition funcMgtBuiltins[] = {
     .sprocessFunc = NULL,
     .finalizeFunc = NULL
   },
+#endif
   {
     .name = "_isfilled",
     .type = FUNCTION_TYPE_ISFILLED,

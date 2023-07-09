@@ -1602,6 +1602,11 @@ static int32_t parseDataFromFile(SInsertParseContext* pCxt, SVnodeModifyOpStmt* 
 
 static int32_t parseFileClause(SInsertParseContext* pCxt, SVnodeModifyOpStmt* pStmt, STableDataCxt* pTableCxt,
                                SToken* pToken) {
+#if defined(TD_SLIM)
+  terrno = TSDB_CODE_OPS_NOT_SUPPORT;
+  return terrno;
+#endif
+
   if (tsUseAdapter) {
     return buildInvalidOperationMsg(&pCxt->msg, "proxy mode does not support csv loading");
   }
