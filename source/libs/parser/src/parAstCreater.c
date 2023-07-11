@@ -623,15 +623,21 @@ SNode* createOrderByExprNode(SAstCreateContext* pCxt, SNode* pExpr, EOrder order
 }
 
 SNode* createSessionWindowNode(SAstCreateContext* pCxt, SNode* pCol, SNode* pGap) {
+#if !defined(TD_SLIM)
   CHECK_PARSER_STATUS(pCxt);
   SSessionWindowNode* session = (SSessionWindowNode*)nodesMakeNode(QUERY_NODE_SESSION_WINDOW);
   CHECK_OUT_OF_MEM(session);
   session->pCol = (SColumnNode*)pCol;
   session->pGap = (SValueNode*)pGap;
   return (SNode*)session;
+#else
+  terrno = TSDB_CODE_OPS_NOT_SUPPORT;
+  return NULL;
+#endif
 }
 
 SNode* createStateWindowNode(SAstCreateContext* pCxt, SNode* pExpr) {
+#if !defined(TD_SLIM)
   CHECK_PARSER_STATUS(pCxt);
   SStateWindowNode* state = (SStateWindowNode*)nodesMakeNode(QUERY_NODE_STATE_WINDOW);
   CHECK_OUT_OF_MEM(state);
@@ -642,9 +648,14 @@ SNode* createStateWindowNode(SAstCreateContext* pCxt, SNode* pExpr) {
   }
   state->pExpr = pExpr;
   return (SNode*)state;
+#else
+  terrno = TSDB_CODE_OPS_NOT_SUPPORT;
+  return NULL;
+#endif
 }
 
 SNode* createEventWindowNode(SAstCreateContext* pCxt, SNode* pStartCond, SNode* pEndCond) {
+#if !defined(TD_SLIM)
   CHECK_PARSER_STATUS(pCxt);
   SEventWindowNode* pEvent = (SEventWindowNode*)nodesMakeNode(QUERY_NODE_EVENT_WINDOW);
   CHECK_OUT_OF_MEM(pEvent);
@@ -656,10 +667,15 @@ SNode* createEventWindowNode(SAstCreateContext* pCxt, SNode* pStartCond, SNode* 
   pEvent->pStartCond = pStartCond;
   pEvent->pEndCond = pEndCond;
   return (SNode*)pEvent;
+#else
+  terrno = TSDB_CODE_OPS_NOT_SUPPORT;
+  return NULL;
+#endif
 }
 
 SNode* createIntervalWindowNode(SAstCreateContext* pCxt, SNode* pInterval, SNode* pOffset, SNode* pSliding,
                                 SNode* pFill) {
+#if !defined(TD_SLIM)
   CHECK_PARSER_STATUS(pCxt);
   SIntervalWindowNode* interval = (SIntervalWindowNode*)nodesMakeNode(QUERY_NODE_INTERVAL_WINDOW);
   CHECK_OUT_OF_MEM(interval);
@@ -673,9 +689,14 @@ SNode* createIntervalWindowNode(SAstCreateContext* pCxt, SNode* pInterval, SNode
   interval->pSliding = pSliding;
   interval->pFill = pFill;
   return (SNode*)interval;
+#else
+  terrno = TSDB_CODE_OPS_NOT_SUPPORT;
+  return NULL;
+#endif
 }
 
 SNode* createFillNode(SAstCreateContext* pCxt, EFillMode mode, SNode* pValues) {
+#if !defined(TD_SLIM)
   CHECK_PARSER_STATUS(pCxt);
   SFillNode* fill = (SFillNode*)nodesMakeNode(QUERY_NODE_FILL);
   CHECK_OUT_OF_MEM(fill);
@@ -688,6 +709,10 @@ SNode* createFillNode(SAstCreateContext* pCxt, EFillMode mode, SNode* pValues) {
   }
   strcpy(((SFunctionNode*)fill->pWStartTs)->functionName, "_wstart");
   return (SNode*)fill;
+#else
+  terrno = TSDB_CODE_OPS_NOT_SUPPORT;
+  return NULL;
+#endif
 }
 
 SNode* createGroupingSetNode(SAstCreateContext* pCxt, SNode* pNode) {
