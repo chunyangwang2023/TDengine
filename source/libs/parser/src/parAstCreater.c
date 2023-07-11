@@ -559,6 +559,7 @@ SNode* createRealTableNode(SAstCreateContext* pCxt, SToken* pDbName, SToken* pTa
 }
 
 SNode* createTempTableNode(SAstCreateContext* pCxt, SNode* pSubquery, const SToken* pTableAlias) {
+#if !defined(TD_SLIM)
   CHECK_PARSER_STATUS(pCxt);
   STempTableNode* tempTable = (STempTableNode*)nodesMakeNode(QUERY_NODE_TEMP_TABLE);
   CHECK_OUT_OF_MEM(tempTable);
@@ -575,9 +576,14 @@ SNode* createTempTableNode(SAstCreateContext* pCxt, SNode* pSubquery, const STok
     strcpy(((SSetOperator*)pSubquery)->stmtName, tempTable->table.tableAlias);
   }
   return (SNode*)tempTable;
+#else
+  terrno = TSDB_CODE_OPS_NOT_SUPPORT;
+  return NULL;
+#endif
 }
 
 SNode* createJoinTableNode(SAstCreateContext* pCxt, EJoinType type, SNode* pLeft, SNode* pRight, SNode* pJoinCond) {
+#if !defined(TD_SLIM)
   CHECK_PARSER_STATUS(pCxt);
   SJoinTableNode* joinTable = (SJoinTableNode*)nodesMakeNode(QUERY_NODE_JOIN_TABLE);
   CHECK_OUT_OF_MEM(joinTable);
@@ -586,6 +592,10 @@ SNode* createJoinTableNode(SAstCreateContext* pCxt, EJoinType type, SNode* pLeft
   joinTable->pRight = pRight;
   joinTable->pOnCond = pJoinCond;
   return (SNode*)joinTable;
+#else
+  terrno = TSDB_CODE_OPS_NOT_SUPPORT;
+  return NULL;
+#endif
 }
 
 SNode* createLimitNode(SAstCreateContext* pCxt, const SToken* pLimit, const SToken* pOffset) {
@@ -681,6 +691,7 @@ SNode* createFillNode(SAstCreateContext* pCxt, EFillMode mode, SNode* pValues) {
 }
 
 SNode* createGroupingSetNode(SAstCreateContext* pCxt, SNode* pNode) {
+#if !defined(TD_SLIM)
   CHECK_PARSER_STATUS(pCxt);
   SGroupingSetNode* groupingSet = (SGroupingSetNode*)nodesMakeNode(QUERY_NODE_GROUPING_SET);
   CHECK_OUT_OF_MEM(groupingSet);
@@ -688,6 +699,10 @@ SNode* createGroupingSetNode(SAstCreateContext* pCxt, SNode* pNode) {
   groupingSet->pParameterList = nodesMakeList();
   nodesListAppend(groupingSet->pParameterList, pNode);
   return (SNode*)groupingSet;
+#else
+  terrno = TSDB_CODE_OPS_NOT_SUPPORT;
+  return NULL;
+#endif
 }
 
 SNode* createInterpTimeRange(SAstCreateContext* pCxt, SNode* pStart, SNode* pEnd) {
@@ -736,11 +751,17 @@ SNode* addWhereClause(SAstCreateContext* pCxt, SNode* pStmt, SNode* pWhere) {
 }
 
 SNode* addPartitionByClause(SAstCreateContext* pCxt, SNode* pStmt, SNodeList* pPartitionByList) {
+#if !defined(TD_SLIM)
   CHECK_PARSER_STATUS(pCxt);
   if (QUERY_NODE_SELECT_STMT == nodeType(pStmt)) {
     ((SSelectStmt*)pStmt)->pPartitionByList = pPartitionByList;
   }
   return pStmt;
+#else
+  terrno = TSDB_CODE_OPS_NOT_SUPPORT;
+  ((SSelectStmt*)pStmt)->pPartitionByList = NULL;
+  return pStmt;
+#endif
 }
 
 SNode* addWindowClauseClause(SAstCreateContext* pCxt, SNode* pStmt, SNode* pWindow) {
