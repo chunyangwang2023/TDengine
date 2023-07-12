@@ -731,17 +731,27 @@ SNode* createGroupingSetNode(SAstCreateContext* pCxt, SNode* pNode) {
 }
 
 SNode* createInterpTimeRange(SAstCreateContext* pCxt, SNode* pStart, SNode* pEnd) {
+#if !defined(TD_SLIM)
   CHECK_PARSER_STATUS(pCxt);
   return createBetweenAnd(pCxt, createPrimaryKeyCol(pCxt, NULL), pStart, pEnd);
+#else
+  terrno = TSDB_CODE_OPS_NOT_SUPPORT;
+  return NULL;
+#endif
 }
 
 SNode* createWhenThenNode(SAstCreateContext* pCxt, SNode* pWhen, SNode* pThen) {
+#if !defined(TD_SLIM)
   CHECK_PARSER_STATUS(pCxt);
   SWhenThenNode* pWhenThen = (SWhenThenNode*)nodesMakeNode(QUERY_NODE_WHEN_THEN);
   CHECK_OUT_OF_MEM(pWhenThen);
   pWhenThen->pWhen = pWhen;
   pWhenThen->pThen = pThen;
   return (SNode*)pWhenThen;
+#else
+  terrno = TSDB_CODE_OPS_NOT_SUPPORT;
+  return NULL;
+#endif
 }
 
 SNode* createCaseWhenNode(SAstCreateContext* pCxt, SNode* pCase, SNodeList* pWhenThenList, SNode* pElse) {
@@ -790,27 +800,45 @@ SNode* addPartitionByClause(SAstCreateContext* pCxt, SNode* pStmt, SNodeList* pP
 }
 
 SNode* addWindowClauseClause(SAstCreateContext* pCxt, SNode* pStmt, SNode* pWindow) {
+#if !defined(TD_SLIM)
   CHECK_PARSER_STATUS(pCxt);
   if (QUERY_NODE_SELECT_STMT == nodeType(pStmt)) {
     ((SSelectStmt*)pStmt)->pWindow = pWindow;
   }
   return pStmt;
+#else
+  terrno = TSDB_CODE_OPS_NOT_SUPPORT;
+  ((SSelectStmt*)pStmt)->pWindow = NULL;
+  return pStmt;
+#endif
 }
 
 SNode* addGroupByClause(SAstCreateContext* pCxt, SNode* pStmt, SNodeList* pGroupByList) {
+#if !defined(TD_SLIM)
   CHECK_PARSER_STATUS(pCxt);
   if (QUERY_NODE_SELECT_STMT == nodeType(pStmt)) {
     ((SSelectStmt*)pStmt)->pGroupByList = pGroupByList;
   }
   return pStmt;
+#else
+  terrno = TSDB_CODE_OPS_NOT_SUPPORT;
+  ((SSelectStmt*)pStmt)->pGroupByList = NULL;
+  return pStmt;
+#endif
 }
 
 SNode* addHavingClause(SAstCreateContext* pCxt, SNode* pStmt, SNode* pHaving) {
+#if !defined(TD_SLIM)
   CHECK_PARSER_STATUS(pCxt);
   if (QUERY_NODE_SELECT_STMT == nodeType(pStmt)) {
     ((SSelectStmt*)pStmt)->pHaving = pHaving;
   }
   return pStmt;
+#else
+  terrno = TSDB_CODE_OPS_NOT_SUPPORT;
+  ((SSelectStmt*)pStmt)->pHaving = NULL;
+  return pStmt;
+#endif
 }
 
 SNode* addOrderByClause(SAstCreateContext* pCxt, SNode* pStmt, SNodeList* pOrderByList) {
@@ -827,6 +855,7 @@ SNode* addOrderByClause(SAstCreateContext* pCxt, SNode* pStmt, SNodeList* pOrder
 }
 
 SNode* addSlimitClause(SAstCreateContext* pCxt, SNode* pStmt, SNode* pSlimit) {
+#if !defined(TD_SLIM)
   CHECK_PARSER_STATUS(pCxt);
   if (NULL == pSlimit) {
     return pStmt;
@@ -835,6 +864,11 @@ SNode* addSlimitClause(SAstCreateContext* pCxt, SNode* pStmt, SNode* pSlimit) {
     ((SSelectStmt*)pStmt)->pSlimit = (SLimitNode*)pSlimit;
   }
   return pStmt;
+#else
+  terrno = TSDB_CODE_OPS_NOT_SUPPORT;
+  ((SSelectStmt*)pStmt)->pSlimit = NULL;
+  return pStmt;
+#endif
 }
 
 SNode* addLimitClause(SAstCreateContext* pCxt, SNode* pStmt, SNode* pLimit) {
@@ -851,22 +885,35 @@ SNode* addLimitClause(SAstCreateContext* pCxt, SNode* pStmt, SNode* pLimit) {
 }
 
 SNode* addRangeClause(SAstCreateContext* pCxt, SNode* pStmt, SNode* pRange) {
+#if !defined(TD_SLIM)
   CHECK_PARSER_STATUS(pCxt);
   if (QUERY_NODE_SELECT_STMT == nodeType(pStmt)) {
     ((SSelectStmt*)pStmt)->pRange = pRange;
   }
   return pStmt;
+#else
+  terrno = TSDB_CODE_OPS_NOT_SUPPORT;
+  ((SSelectStmt*)pStmt)->pRange = NULL;
+  return pStmt;
+#endif
 }
 
 SNode* addEveryClause(SAstCreateContext* pCxt, SNode* pStmt, SNode* pEvery) {
+#if !defined(TD_SLIM)
   CHECK_PARSER_STATUS(pCxt);
   if (QUERY_NODE_SELECT_STMT == nodeType(pStmt)) {
     ((SSelectStmt*)pStmt)->pEvery = pEvery;
   }
   return pStmt;
+#else
+  terrno = TSDB_CODE_OPS_NOT_SUPPORT;
+  ((SSelectStmt*)pStmt)->pEvery = NULL;
+  return pStmt;
+#endif
 }
 
 SNode* addFillClause(SAstCreateContext* pCxt, SNode* pStmt, SNode* pFill) {
+#if !defined(TD_SLIM)
   CHECK_PARSER_STATUS(pCxt);
   if (QUERY_NODE_SELECT_STMT == nodeType(pStmt) && NULL != pFill) {
     SFillNode* pFillClause = (SFillNode*)pFill;
@@ -875,6 +922,11 @@ SNode* addFillClause(SAstCreateContext* pCxt, SNode* pStmt, SNode* pFill) {
     ((SSelectStmt*)pStmt)->pFill = (SNode*)pFillClause;
   }
   return pStmt;
+#else
+  terrno = TSDB_CODE_OPS_NOT_SUPPORT;
+  ((SSelectStmt*)pStmt)->pFill = NULL;
+  return pStmt;
+#endif
 }
 
 SNode* createSelectStmt(SAstCreateContext* pCxt, bool isDistinct, SNodeList* pProjectionList, SNode* pTable) {
@@ -1482,6 +1534,8 @@ SNode* createShowCreateDatabaseStmt(SAstCreateContext* pCxt, SToken* pDbName) {
 }
 
 SNode* createShowAliveStmt(SAstCreateContext* pCxt, SNode* pNode, ENodeType type) {
+#if !defined(TD_SLIM)
+
   CHECK_PARSER_STATUS(pCxt);
   SToken  dbToken = {0};
   SToken* pDbToken = NULL;
@@ -1511,6 +1565,11 @@ SNode* createShowAliveStmt(SAstCreateContext* pCxt, SNode* pNode, ENodeType type
   }
 
   return (SNode*)pStmt;
+
+#else
+  terrno = TSDB_CODE_OPS_NOT_SUPPORT;
+  return NULL;
+#endif
 }
 
 SNode* createShowCreateTableStmt(SAstCreateContext* pCxt, ENodeType type, SNode* pRealTable) {
@@ -1835,6 +1894,7 @@ SNode* setExplainRatio(SAstCreateContext* pCxt, SNode* pOptions, const SToken* p
 }
 
 SNode* createExplainStmt(SAstCreateContext* pCxt, bool analyze, SNode* pOptions, SNode* pQuery) {
+#if !defined(TD_SLIM)
   CHECK_PARSER_STATUS(pCxt);
   SExplainStmt* pStmt = (SExplainStmt*)nodesMakeNode(QUERY_NODE_EXPLAIN_STMT);
   CHECK_OUT_OF_MEM(pStmt);
@@ -1842,6 +1902,10 @@ SNode* createExplainStmt(SAstCreateContext* pCxt, bool analyze, SNode* pOptions,
   pStmt->pOptions = (SExplainOptions*)pOptions;
   pStmt->pQuery = pQuery;
   return (SNode*)pStmt;
+#else
+  terrno = TSDB_CODE_OPS_NOT_SUPPORT;
+  return NULL;
+#endif
 }
 
 SNode* createDescribeStmt(SAstCreateContext* pCxt, SNode* pRealTable) {
@@ -1855,10 +1919,15 @@ SNode* createDescribeStmt(SAstCreateContext* pCxt, SNode* pRealTable) {
 }
 
 SNode* createResetQueryCacheStmt(SAstCreateContext* pCxt) {
+#if !defined(TD_SLIM)
   CHECK_PARSER_STATUS(pCxt);
   SNode* pStmt = nodesMakeNode(QUERY_NODE_RESET_QUERY_CACHE_STMT);
   CHECK_OUT_OF_MEM(pStmt);
   return pStmt;
+#else
+  terrno = TSDB_CODE_OPS_NOT_SUPPORT;
+  return NULL;
+#endif
 }
 
 static int32_t convertUdfLanguageType(SAstCreateContext* pCxt, const SToken* pLanguageToken, int8_t* pLanguage) {
@@ -2005,19 +2074,29 @@ SNode* createDropStreamStmt(SAstCreateContext* pCxt, bool ignoreNotExists, SToke
 }
 
 SNode* createKillStmt(SAstCreateContext* pCxt, ENodeType type, const SToken* pId) {
+#if !defined(TD_SLIM)
   CHECK_PARSER_STATUS(pCxt);
   SKillStmt* pStmt = (SKillStmt*)nodesMakeNode(type);
   CHECK_OUT_OF_MEM(pStmt);
   pStmt->targetId = taosStr2Int32(pId->z, NULL, 10);
   return (SNode*)pStmt;
+#else
+  terrno = TSDB_CODE_OPS_NOT_SUPPORT;
+  return NULL;
+#endif
 }
 
 SNode* createKillQueryStmt(SAstCreateContext* pCxt, const SToken* pQueryId) {
+#if !defined(TD_SLIM)
   CHECK_PARSER_STATUS(pCxt);
   SKillQueryStmt* pStmt = (SKillQueryStmt*)nodesMakeNode(QUERY_NODE_KILL_QUERY_STMT);
   CHECK_OUT_OF_MEM(pStmt);
   trimString(pQueryId->z, pQueryId->n, pStmt->queryId, sizeof(pStmt->queryId) - 1);
   return (SNode*)pStmt;
+#else
+  terrno = TSDB_CODE_OPS_NOT_SUPPORT;
+  return NULL;
+#endif
 }
 
 SNode* createBalanceVgroupStmt(SAstCreateContext* pCxt) {
@@ -2061,10 +2140,15 @@ SNode* createSplitVgroupStmt(SAstCreateContext* pCxt, const SToken* pVgId) {
 }
 
 SNode* createSyncdbStmt(SAstCreateContext* pCxt, const SToken* pDbName) {
+#if !defined(TD_SLIM)
   CHECK_PARSER_STATUS(pCxt);
   SNode* pStmt = nodesMakeNode(QUERY_NODE_SYNCDB_STMT);
   CHECK_OUT_OF_MEM(pStmt);
   return pStmt;
+#else
+  terrno = TSDB_CODE_OPS_NOT_SUPPORT;
+  return NULL;
+#endif
 }
 
 SNode* createGrantStmt(SAstCreateContext* pCxt, int64_t privileges, STokenPair* pPrivLevel, SToken* pUserName,
