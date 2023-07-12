@@ -1069,9 +1069,8 @@ every_opt(A) ::= EVERY NK_LP duration_literal(B) NK_RP.                         
 
 /************************************************ query_expression ****************************************************/
 query_expression(A) ::= query_simple(B) 
-  order_by_clause_opt(C) slimit_clause_opt(D) limit_clause_opt(E).                {
+  order_by_clause_opt(C) limit_clause_opt(E).                {
                                                                                     A = addOrderByClause(pCxt, B, C);
-                                                                                    A = addSlimitClause(pCxt, A, D);
                                                                                     A = addLimitClause(pCxt, A, E);
                                                                                   }
 
