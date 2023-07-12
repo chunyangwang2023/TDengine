@@ -954,12 +954,9 @@ table_reference_list(A) ::= table_reference_list(B) NK_COMMA table_reference(C).
 
 /************************************************ table_reference *****************************************************/
 table_reference(A) ::= table_primary(B).                                          { A = B; }
-table_reference(A) ::= joined_table(B).                                           { A = B; }
 
 table_primary(A) ::= table_name(B) alias_opt(C).                                  { A = createRealTableNode(pCxt, NULL, &B, &C); }
 table_primary(A) ::= db_name(B) NK_DOT table_name(C) alias_opt(D).                { A = createRealTableNode(pCxt, &B, &C, &D); }
-table_primary(A) ::= subquery(B) alias_opt(C).                                    { A = createTempTableNode(pCxt, releaseRawExprNode(pCxt, B), &C); }
-table_primary(A) ::= parenthesized_joined_table(B).                               { A = B; }
 
 %type alias_opt                                                                   { SToken }
 %destructor alias_opt                                                             { }
@@ -967,8 +964,6 @@ alias_opt(A) ::= .                                                              
 alias_opt(A) ::= table_alias(B).                                                  { A = B; }
 alias_opt(A) ::= AS table_alias(B).                                               { A = B; }
 
-parenthesized_joined_table(A) ::= NK_LP joined_table(B) NK_RP.                    { A = B; }
-parenthesized_joined_table(A) ::= NK_LP parenthesized_joined_table(B) NK_RP.      { A = B; }
 
 /************************************************ joined_table ********************************************************/
 joined_table(A) ::=
