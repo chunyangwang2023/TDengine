@@ -983,16 +983,9 @@ join_type(A) ::= INNER.                                                         
 /************************************************ query_specification *************************************************/
 query_specification(A) ::=
   SELECT set_quantifier_opt(B) select_list(C) from_clause_opt(D) 
-  where_clause_opt(E) partition_by_clause_opt(F) range_opt(J) every_opt(K) 
-  fill_opt(L) twindow_clause_opt(G) having_clause_opt(I).  { 
+  where_clause_opt(E) .  { 
                                                                                     A = createSelectStmt(pCxt, B, C, D);
                                                                                     A = addWhereClause(pCxt, A, E);
-                                                                                    A = addPartitionByClause(pCxt, A, F);
-                                                                                    A = addWindowClauseClause(pCxt, A, G);
-                                                                                    A = addHavingClause(pCxt, A, I);
-                                                                                    A = addRangeClause(pCxt, A, J);
-                                                                                    A = addEveryClause(pCxt, A, K);
-                                                                                    A = addFillClause(pCxt, A, L);
                                                                                   }
 
 %type set_quantifier_opt                                                          { bool }
