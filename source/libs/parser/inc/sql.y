@@ -739,7 +739,6 @@ expression(A) ::= literal(B).                                                   
 expression(A) ::= pseudo_column(B).                                               { A = B; }
 expression(A) ::= column_reference(B).                                            { A = B; }
 expression(A) ::= function_expression(B).                                         { A = B; }
-expression(A) ::= case_when_expression(B).                                        { A = B; }
 expression(A) ::= NK_LP(B) expression(C) NK_RP(D).                                { A = createRawExprNodeExt(pCxt, &B, &D, releaseRawExprNode(pCxt, C)); }
 expression(A) ::= NK_PLUS(B) expr_or_subquery(C).                                 {
                                                                                     SToken t = getTokenFromRawExprNode(pCxt, C);
