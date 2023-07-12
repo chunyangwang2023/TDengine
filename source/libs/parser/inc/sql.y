@@ -1074,12 +1074,6 @@ query_expression(A) ::= query_simple(B)
                                                                                   }
 
 query_simple(A) ::= query_specification(B).                                       { A = B; }
-query_simple(A) ::= union_query_expression(B).                                    { A = B; }
-
-union_query_expression(A) ::=
-  query_simple_or_subquery(B) UNION ALL query_simple_or_subquery(C).              { A = createSetOperator(pCxt, SET_OP_TYPE_UNION_ALL, B, C); }
-union_query_expression(A) ::=
-  query_simple_or_subquery(B) UNION query_simple_or_subquery(C).                  { A = createSetOperator(pCxt, SET_OP_TYPE_UNION, B, C); }
 
 query_simple_or_subquery(A) ::= query_simple(B).                                  { A = B; }
 query_simple_or_subquery(A) ::= subquery(B).                                      { A = releaseRawExprNode(pCxt, B); }
