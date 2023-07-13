@@ -2134,6 +2134,7 @@ static int32_t translateTableCountPseudoColumn(SFunctionNode* pFunc, char* pErrB
 
 // clang-format off
 const SBuiltinFuncDefinition funcMgtBuiltins[] = {
+#if !defined(TD_SLIM)  
   {
     .name = "count",
     .type = FUNCTION_TYPE_COUNT,
@@ -3332,6 +3333,7 @@ const SBuiltinFuncDefinition funcMgtBuiltins[] = {
     .sprocessFunc = NULL,
     .finalizeFunc = NULL
   },
+#endif
 };
 // clang-format on
 

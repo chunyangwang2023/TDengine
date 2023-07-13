@@ -977,9 +977,8 @@ join_type(A) ::= INNER.                                                         
 /************************************************ query_specification *************************************************/
 query_specification(A) ::=
   SELECT set_quantifier_opt(B) select_list(C) from_clause_opt(D) 
-  where_clause_opt(E) .  { 
+   .  { 
                                                                                     A = createSelectStmt(pCxt, B, C, D);
-                                                                                    A = addWhereClause(pCxt, A, E);
                                                                                   }
 
 %type set_quantifier_opt                                                          { bool }
