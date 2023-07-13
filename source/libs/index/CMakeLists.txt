@@ -1,4 +1,9 @@
-aux_source_directory(src INDEX_SRC)
+if(${BUILD_SLIM})
+  aux_source_directory(src/slim INDEX_SRC)
+else()
+  aux_source_directory(src INDEX_SRC)
+endif()
+
 add_library(index STATIC ${INDEX_SRC})
 target_include_directories(
     index
