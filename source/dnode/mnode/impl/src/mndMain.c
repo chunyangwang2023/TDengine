@@ -41,6 +41,7 @@
 #include "mndTrans.h"
 #include "mndUser.h"
 #include "mndVgroup.h"
+#include "wal.h"
 
 static inline int32_t mndAcquireRpc(SMnode *pMnode) {
   int32_t code = 0;
@@ -291,6 +292,10 @@ static void *mndThreadFp(void *param) {
     if (sec % (MNODE_TIMEOUT_SEC / 2) == 0) {
       mndSyncCheckTimeout(pMnode);
     }
+
+#if defined(TD_SLIM)
+    walFsyncAll();
+#endif
   }
 
   return NULL;
