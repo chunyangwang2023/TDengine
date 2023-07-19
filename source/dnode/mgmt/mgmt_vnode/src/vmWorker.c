@@ -257,7 +257,12 @@ int32_t vmPutMsgToStreamQueue(SVnodeMgmt *pMgmt, SRpcMsg *pMsg) { return vmPutMs
 int32_t vmPutMsgToMgmtQueue(SVnodeMgmt *pMgmt, SRpcMsg *pMsg) {
   const STraceId *trace = &pMsg->info.traceId;
   dGTrace("msg:%p, put into vnode-mgmt queue", pMsg);
+#if !defined(TD_SLIM)
   taosWriteQitem(pMgmt->mgmtWorker.queue, pMsg);
+#else
+  SQueueInfo info = {.ahandle = pMgmt};
+  vmProcessMgmtQueue(&info, pMsg);
+#endif
   return 0;
 }
 
@@ -405,6 +410,7 @@ int32_t vmStartWorker(SVnodeMgmt *pMgmt) {
   pFPool->max = tsNumOfVnodeFetchThreads;
   if (tWWorkerInit(pFPool) != 0) return -1;
 
+#if !defined(TD_SLIM)
   SSingleWorkerCfg mgmtCfg = {
       .min = 1,
       .max = 1,
@@ -413,6 +419,7 @@ int32_t vmStartWorker(SVnodeMgmt *pMgmt) {
       .param = pMgmt,
   };
   if (tSingleWorkerInit(&pMgmt->mgmtWorker, &mgmtCfg) != 0) return -1;
+#endif
 
   dDebug("vnode workers are initialized");
   return 0;

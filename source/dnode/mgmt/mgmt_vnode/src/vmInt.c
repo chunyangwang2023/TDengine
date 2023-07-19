@@ -291,7 +291,9 @@ static void *vmCloseVnodeInThread(void *param) {
 
 static void vmCloseVnodes(SVnodeMgmt *pMgmt) {
   dInfo("start to close all vnodes");
+#if !defined(TD_SLIM)
   tSingleWorkerCleanup(&pMgmt->mgmtWorker);
+#endif
   dInfo("vnodes mgmt worker is stopped");
 
   int32_t     numOfVnodes = 0;
