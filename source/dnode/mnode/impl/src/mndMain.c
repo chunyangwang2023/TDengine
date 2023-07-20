@@ -246,7 +246,7 @@ static void mndCheckDnodeOffline(SMnode *pMnode) {
 static void *mndThreadFp(void *param) {
   SMnode *pMnode = param;
   int64_t lastTime = 0;
-  setThreadName("mnode-timer");
+  setThreadName("meta-timer");
 
   while (1) {
     lastTime++;
@@ -295,6 +295,7 @@ static void *mndThreadFp(void *param) {
 
 #if defined(TD_SLIM)
     walFsyncAll();
+    taosCacheTimedRefreshLoop();
 #endif
   }
 
