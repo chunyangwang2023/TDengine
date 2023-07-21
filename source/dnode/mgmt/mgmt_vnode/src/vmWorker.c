@@ -257,7 +257,12 @@ int32_t vmPutMsgToStreamQueue(SVnodeMgmt *pMgmt, SRpcMsg *pMsg) { return vmPutMs
 int32_t vmPutMsgToMgmtQueue(SVnodeMgmt *pMgmt, SRpcMsg *pMsg) {
   const STraceId *trace = &pMsg->info.traceId;
   dGTrace("msg:%p, put into vnode-mgmt queue", pMsg);
+#if !defined(TD_SLIM)
   taosWriteQitem(pMgmt->mgmtWorker.queue, pMsg);
+#else
+  SQueueInfo info = {.ahandle = pMgmt};
+  vmProcessMgmtQueue(&info, pMsg);
+#endif
   return 0;
 }
 
@@ -331,10 +336,9 @@ int32_t vmGetQueueSize(SVnodeMgmt *pMgmt, int32_t vgId, EQueueType qtype) {
 }
 
 int32_t vmAllocQueue(SVnodeMgmt *pMgmt, SVnodeObj *pVnode) {
+#if !defined(TD_SLIM)
   SMultiWorkerCfg wcfg = {.max = 1, .name = "vnode-write", .fp = (FItems)vnodeProposeWriteMsg, .param = pVnode->pImpl};
   (void)tMultiWorkerInit(&pVnode->pWriteW, &wcfg);
-
-#if !defined(TD_SLIM)
   SMultiWorkerCfg scfg = {.max = 1, .name = "vnode-sync", .fp = (FItems)vmProcessSyncQueue, .param = pVnode};
   (void)tMultiWorkerInit(&pVnode->pSyncW, &scfg);
   SMultiWorkerCfg sccfg = {.max = 1, .name = "vnode-sync-rd", .fp = (FItems)vmProcessSyncQueue, .param = pVnode};
@@ -342,6 +346,9 @@ int32_t vmAllocQueue(SVnodeMgmt *pMgmt, SVnodeObj *pVnode) {
   SMultiWorkerCfg acfg = {.max = 1, .name = "vnode-apply", .fp = (FItems)vnodeApplyWriteMsg, .param = pVnode->pImpl};
   (void)tMultiWorkerInit(&pVnode->pApplyW, &acfg);
   pVnode->pStreamQ = tAutoQWorkerAllocQueue(&pMgmt->streamPool, pVnode, (FItem)vmProcessStreamQueue);
+#else
+  SMultiWorkerCfg wcfg = {.max = 1, .name = "data-write", .fp = (FItems)vnodeProposeWriteMsg, .param = pVnode->pImpl};
+  (void)tMultiWorkerInit(&pVnode->pWriteW, &wcfg);
 #endif
 
   pVnode->pQueryQ = tQWorkerAllocQueue(&pMgmt->queryPool, pVnode, (FItem)vmProcessQueryQueue);
@@ -387,18 +394,17 @@ void vmFreeQueue(SVnodeMgmt *pMgmt, SVnodeObj *pVnode) {
 }
 
 int32_t vmStartWorker(SVnodeMgmt *pMgmt) {
+#if !defined(TD_SLIM)
   SQWorkerPool *pQPool = &pMgmt->queryPool;
   pQPool->name = "vnode-query";
   pQPool->min = tsNumOfVnodeQueryThreads;
   pQPool->max = tsNumOfVnodeQueryThreads;
   if (tQWorkerInit(pQPool) != 0) return -1;
 
-#if !defined(TD_SLIM)
   SAutoQWorkerPool *pStreamPool = &pMgmt->streamPool;
   pStreamPool->name = "vnode-stream";
   pStreamPool->ratio = tsRatioOfVnodeStreamThreads;
   if (tAutoQWorkerInit(pStreamPool) != 0) return -1;
-#endif
 
   SWWorkerPool *pFPool = &pMgmt->fetchPool;
   pFPool->name = "vnode-fetch";
@@ -413,6 +419,21 @@ int32_t vmStartWorker(SVnodeMgmt *pMgmt) {
       .param = pMgmt,
   };
   if (tSingleWorkerInit(&pMgmt->mgmtWorker, &mgmtCfg) != 0) return -1;
+
+#else
+
+  SQWorkerPool *pQPool = &pMgmt->queryPool;
+  pQPool->name = "data-read";
+  pQPool->min = tsNumOfVnodeQueryThreads;
+  pQPool->max = tsNumOfVnodeQueryThreads;
+  if (tQWorkerInit(pQPool) != 0) return -1;
+
+  SWWorkerPool *pFPool = &pMgmt->fetchPool;
+  pFPool->name = "data-fetch";
+  pFPool->max = tsNumOfVnodeFetchThreads;
+  if (tWWorkerInit(pFPool) != 0) return -1;
+
+#endif
 
   dDebug("vnode workers are initialized");
   return 0;

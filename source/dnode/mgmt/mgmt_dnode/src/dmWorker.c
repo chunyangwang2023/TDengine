@@ -259,6 +259,7 @@ static void dmProcessMgmtQueue(SQueueInfo *pInfo, SRpcMsg *pMsg) {
 }
 
 int32_t dmStartWorker(SDnodeMgmt *pMgmt) {
+#if !defined(TD_SLIM)
   SSingleWorkerCfg cfg = {
       .min = 1,
       .max = 1,
@@ -271,18 +272,27 @@ int32_t dmStartWorker(SDnodeMgmt *pMgmt) {
     return -1;
   }
 
+#endif
   dDebug("dnode workers are initialized");
   return 0;
 }
 
 void dmStopWorker(SDnodeMgmt *pMgmt) {
+#if !defined(TD_SLIM)
   tSingleWorkerCleanup(&pMgmt->mgmtWorker);
+#endif
   dDebug("dnode workers are closed");
 }
 
 int32_t dmPutNodeMsgToMgmtQueue(SDnodeMgmt *pMgmt, SRpcMsg *pMsg) {
   SSingleWorker *pWorker = &pMgmt->mgmtWorker;
   dTrace("msg:%p, put into worker %s", pMsg, pWorker->name);
+
+#if !defined(TD_SLIM)
   taosWriteQitem(pWorker->queue, pMsg);
+#else
+  SQueueInfo info = {.ahandle = pMgmt};
+  dmProcessMgmtQueue(&info, pMsg);
+#endif
   return 0;
 }
