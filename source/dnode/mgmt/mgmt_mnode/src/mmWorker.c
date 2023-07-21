@@ -310,8 +310,10 @@ int32_t mmPutMsgToQueue(SMnodeMgmt *pMgmt, EQueueType qtype, SRpcMsg *pRpc) {
     case WRITE_QUEUE:
     case READ_QUEUE:
     case FETCH_QUEUE:
-    case QUERY_QUEUE:
       pWorker = &pMgmt->writeWorker;
+      break;
+    case QUERY_QUEUE:
+      pWorker = &pMgmt->queryWorker;
       break;
     case SYNC_QUEUE:
     case SYNC_RD_QUEUE:
@@ -336,10 +338,22 @@ int32_t mmPutMsgToQueue(SMnodeMgmt *pMgmt, EQueueType qtype, SRpcMsg *pRpc) {
 }
 
 int32_t mmStartWorker(SMnodeMgmt *pMgmt) {
+  SSingleWorkerCfg qCfg = {
+      .min = tsNumOfMnodeQueryThreads,
+      .max = tsNumOfMnodeQueryThreads,
+      .name = "meta-query",
+      .fp = (FItem)mmProcessRpcMsg,
+      .param = pMgmt,
+  };
+  if (tSingleWorkerInit(&pMgmt->queryWorker, &qCfg) != 0) {
+    dError("failed to start mnode-query worker since %s", terrstr());
+    return -1;
+  }
+
   SSingleWorkerCfg wCfg = {
       .min = 1,
       .max = 1,
-      .name = "tdlite-meta",
+      .name = "meta-write",
       .fp = (FItem)mmProcessRpcMsg,
       .param = pMgmt,
   };
@@ -355,6 +369,7 @@ int32_t mmStartWorker(SMnodeMgmt *pMgmt) {
 void mmStopWorker(SMnodeMgmt *pMgmt) {
   while (pMgmt->refCount > 0) taosMsleep(10);
 
+  tSingleWorkerCleanup(&pMgmt->queryWorker);
   tSingleWorkerCleanup(&pMgmt->writeWorker);
   dDebug("mnode workers are closed");
 }
