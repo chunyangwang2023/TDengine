@@ -142,7 +142,11 @@ static void* loop(void* arg) {
   SVnodeTask* pTask;
   int         ret;
 
+#if defined(TD_SLIM)
+  setThreadName("tdlite-commit");
+#else
   setThreadName("vnode-commit");
+#endif
 
   for (;;) {
     taosThreadMutexLock(&(vnodeGlobal.mutex));

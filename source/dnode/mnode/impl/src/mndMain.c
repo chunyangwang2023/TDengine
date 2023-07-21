@@ -246,7 +246,11 @@ static void mndCheckDnodeOffline(SMnode *pMnode) {
 static void *mndThreadFp(void *param) {
   SMnode *pMnode = param;
   int64_t lastTime = 0;
-  setThreadName("meta-timer");
+#if defined(TD_SLIM)
+  setThreadName("tdlite-timer");
+#else
+  setThreadName("mnode-timer");
+#endif
 
   while (1) {
     lastTime++;
