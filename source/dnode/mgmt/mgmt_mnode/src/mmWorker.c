@@ -341,7 +341,7 @@ int32_t mmStartWorker(SMnodeMgmt *pMgmt) {
   SSingleWorkerCfg qCfg = {
       .min = tsNumOfMnodeQueryThreads,
       .max = tsNumOfMnodeQueryThreads,
-      .name = "mnode-query",
+      .name = "meta-read",
       .fp = (FItem)mmProcessRpcMsg,
       .param = pMgmt,
   };
@@ -353,7 +353,7 @@ int32_t mmStartWorker(SMnodeMgmt *pMgmt) {
   SSingleWorkerCfg wCfg = {
       .min = 1,
       .max = 1,
-      .name = "mnode-write",
+      .name = "meta-write",
       .fp = (FItem)mmProcessRpcMsg,
       .param = pMgmt,
   };

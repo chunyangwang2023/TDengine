@@ -965,6 +965,8 @@ int32_t ctgGetCachedStbNameFromSuid(SCatalog* pCtg, char* dbFName, uint64_t suid
 int32_t ctgGetTbTagCb(SCtgTask* pTask);
 int32_t ctgGetUserCb(SCtgTask* pTask);
 
+void ctgCleanupCacheQueue(void);
+
 extern SCatalogMgmt      gCtgMgmt;
 extern SCtgDebug         gCTGDebug;
 extern SCtgAsyncFps      gCtgAsyncFps[];

@@ -829,6 +829,7 @@ void ctgDequeue(SCtgCacheOperation **op) {
 }
 
 int32_t ctgEnqueue(SCatalog *pCtg, SCtgCacheOperation *operation) {
+#if !defined(TD_SLIM)
   SCtgQNode *node = taosMemoryCalloc(1, sizeof(SCtgQNode));
   if (NULL == node) {
     qError("calloc %d failed", (int32_t)sizeof(SCtgQNode));
@@ -877,6 +878,11 @@ int32_t ctgEnqueue(SCatalog *pCtg, SCtgCacheOperation *operation) {
     }
     taosMemoryFree(operation);
   }
+
+#else
+  (*gCtgCacheOperation[operation->opId].func)(operation);
+  taosMemoryFreeClear(operation);
+#endif
 
   return TSDB_CODE_SUCCESS;
 }
@@ -2553,6 +2559,7 @@ void *ctgUpdateThreadFunc(void *param) {
 }
 
 int32_t ctgStartUpdateThread() {
+#if !defined(TD_SLIM)
   TdThreadAttr thAttr;
   taosThreadAttrInit(&thAttr);
   taosThreadAttrSetDetachState(&thAttr, PTHREAD_CREATE_JOINABLE);
@@ -2563,6 +2570,7 @@ int32_t ctgStartUpdateThread() {
   }
 
   taosThreadAttrDestroy(&thAttr);
+#endif
   return TSDB_CODE_SUCCESS;
 }
 

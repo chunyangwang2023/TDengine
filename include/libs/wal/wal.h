@@ -223,6 +223,8 @@ int64_t walGetLastVer(SWal *);
 int64_t walGetCommittedVer(SWal *);
 int64_t walGetAppliedVer(SWal *);
 
+void walFsyncAll();
+
 #ifdef __cplusplus
 }
 #endif
