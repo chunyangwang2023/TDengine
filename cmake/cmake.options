@@ -130,6 +130,11 @@ option(
     off 
 )
 
+option(
+   BUILD_SLIM
+   "If use slim" 
+   OFF
+)
 
 option(
     BUILD_WITH_NURAFT
