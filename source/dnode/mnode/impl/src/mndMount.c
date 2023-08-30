@@ -144,7 +144,7 @@ static int32_t mndMountActionUpdate(SSdb *pSdb, SMountObj *pOld, SMountObj *pNew
 }
 
 SMountObj *mndAcquireMount(SMnode *pMnode, const char *mountName) {
-  SMountObj *pObj = sdbAcquire(pMnode->pSdb, SDB_MOUNT, &mountName);
+  SMountObj *pObj = sdbAcquire(pMnode->pSdb, SDB_MOUNT, mountName);
   if (pObj == NULL && terrno == TSDB_CODE_SDB_OBJ_NOT_THERE) {
     terrno = TSDB_CODE_MND_MOUNT_NOT_EXIST;
   }
