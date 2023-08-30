@@ -42,7 +42,8 @@ target_link_libraries(
     PRIVATE stream ${LINK_JEMALLOC}
 )
 
-if(NOT ${BUILD_SLIM})
+if(${BUILD_SLIM})
+else()
 target_link_libraries(function PUBLIC uv_a)
 
 add_executable(runUdf test/runUdf.c)
