@@ -408,8 +408,13 @@ static int32_t mndRetrieveMounts(SRpcMsg *pReq, SShowObj *pShow, SSDataBlock *pB
     colDataSetVal(pColInfo, numOfRows, (const char *)&pMount->dnodeId, false);
 
     cols++;
+    pColInfo = taosArrayGet(pBlock->pDataBlock, cols);
+    colDataSetVal(pColInfo, numOfRows, (const char *)&pMount->createdTime, false);
+
+    cols++;
     char path[TSDB_MOUNT_PATH_LEN + VARSTR_HEADER_SIZE] = {0};
-    STR_WITH_MAXSIZE_TO_VARSTR(path, pMount->path, pShow->pMeta->pSchemas[cols].bytes);
+    STR_WITH_MAXSIZE_TO_VARSTR(path, pMount->path, TSDB_MOUNT_PATH_LEN + VARSTR_HEADER_SIZE);
+    pColInfo = taosArrayGet(pBlock->pDataBlock, cols);
     colDataSetVal(pColInfo, numOfRows, (const char *)path, false);
 
     numOfRows++;

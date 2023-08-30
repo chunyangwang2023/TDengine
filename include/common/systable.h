@@ -39,7 +39,6 @@ extern "C" {
 #define TSDB_INS_TABLE_COLS              "ins_columns"
 #define TSDB_INS_TABLE_TABLE_DISTRIBUTED "ins_table_distributed"
 #define TSDB_INS_TABLE_USERS             "ins_users"
-#define TSDB_INS_TABLE_MOUNTS            "ins_mounts"
 #define TSDB_INS_TABLE_LICENCES          "ins_grants"
 #define TSDB_INS_TABLE_VGROUPS           "ins_vgroups"
 #define TSDB_INS_TABLE_VNODES            "ins_vnodes"
@@ -50,6 +49,7 @@ extern "C" {
 #define TSDB_INS_TABLE_STREAMS           "ins_streams"
 #define TSDB_INS_TABLE_STREAM_TASKS      "ins_stream_tasks"
 #define TSDB_INS_TABLE_USER_PRIVILEGES   "ins_user_privileges"
+#define TSDB_INS_TABLE_MOUNTS            "ins_mounts"
 
 #define TSDB_PERFORMANCE_SCHEMA_DB   "performance_schema"
 #define TSDB_PERFS_TABLE_SMAS        "perf_smas"

@@ -224,9 +224,9 @@ static const SSysDbTableSchema userUsersSchema[] = {
 static const SSysDbTableSchema userMountsSchema[] = {
     {.name = "name", .bytes = TSDB_MOUNT_NAME_LEN + VARSTR_HEADER_SIZE, .type = TSDB_DATA_TYPE_VARCHAR, .sysInfo = false},
     {.name = "dnode", .bytes = 4, .type = TSDB_DATA_TYPE_INT, .sysInfo = false},
-    {.name = "path", .bytes = TSDB_MOUNT_PATH_LEN + VARSTR_HEADER_SIZE, .type = TSDB_DATA_TYPE_VARCHAR, .sysInfo = false},
     {.name = "create_time", .bytes = 8, .type = TSDB_DATA_TYPE_TIMESTAMP, .sysInfo = false},
-};
+    {.name = "path", .bytes = TSDB_MOUNT_PATH_LEN + VARSTR_HEADER_SIZE, .type = TSDB_DATA_TYPE_VARCHAR, .sysInfo = false},
+ };
 
 GRANTS_SCHEMA;
 
@@ -327,7 +327,6 @@ static const SSysTableMeta infosMeta[] = {
     {TSDB_INS_TABLE_COLS, userColsSchema, tListLen(userColsSchema), false},
     // {TSDB_INS_TABLE_TABLE_DISTRIBUTED, userTblDistSchema, tListLen(userTblDistSchema)},
     {TSDB_INS_TABLE_USERS, userUsersSchema, tListLen(userUsersSchema), false},
-    {TSDB_INS_TABLE_MOUNTS, userMountsSchema, tListLen(userMountsSchema), false},
     {TSDB_INS_TABLE_LICENCES, grantsSchema, tListLen(grantsSchema), true},
     {TSDB_INS_TABLE_VGROUPS, vgroupsSchema, tListLen(vgroupsSchema), true},
     {TSDB_INS_TABLE_CONFIGS, configSchema, tListLen(configSchema), false},
@@ -338,6 +337,7 @@ static const SSysTableMeta infosMeta[] = {
     {TSDB_INS_TABLE_STREAM_TASKS, streamTaskSchema, tListLen(streamTaskSchema), false},
     {TSDB_INS_TABLE_VNODES, vnodesSchema, tListLen(vnodesSchema), true},
     {TSDB_INS_TABLE_USER_PRIVILEGES, userUserPrivilegesSchema, tListLen(userUserPrivilegesSchema), false},
+    {TSDB_INS_TABLE_MOUNTS, userMountsSchema, tListLen(userMountsSchema), false},
 };
 
 static const SSysDbTableSchema connectionsSchema[] = {

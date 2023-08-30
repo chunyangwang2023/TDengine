@@ -175,13 +175,6 @@ static const SSysTableShowAdapter sysTableShowAdapter[] = {
     .pShowCols = {"*"}
   },
   {
-    .showType = QUERY_NODE_SHOW_MOUNTS_STMT,
-    .pDbName = TSDB_INFORMATION_SCHEMA_DB,
-    .pTableName = TSDB_INS_TABLE_MOUNTS,
-    .numOfShowCols = 1,
-    .pShowCols = {"*"}
-  },
-  {
     .showType = QUERY_NODE_SHOW_LICENCES_STMT,
     .pDbName = TSDB_INFORMATION_SCHEMA_DB,
     .pTableName = TSDB_INS_TABLE_LICENCES,
@@ -270,6 +263,13 @@ static const SSysTableShowAdapter sysTableShowAdapter[] = {
     .numOfShowCols = 1,
     .pShowCols = {"*"}
   },
+  {
+    .showType = QUERY_NODE_SHOW_MOUNTS_STMT,
+    .pDbName = TSDB_INFORMATION_SCHEMA_DB,
+    .pTableName = TSDB_INS_TABLE_MOUNTS,
+    .numOfShowCols = 1,
+    .pShowCols = {"*"}
+  }
 };
 // clang-format on
 

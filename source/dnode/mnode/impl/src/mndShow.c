@@ -83,8 +83,6 @@ static int32_t convertToRetrieveType(char *name, int32_t len) {
     //    type = TSDB_MGMT_TABLE_DIST;
   } else if (strncasecmp(name, TSDB_INS_TABLE_USERS, len) == 0) {
     type = TSDB_MGMT_TABLE_USER;
-  } else if (strncasecmp(name, TSDB_INS_TABLE_MOUNTS, len) == 0) {
-    type = TSDB_MGMT_TABLE_MOUNT;
   } else if (strncasecmp(name, TSDB_INS_TABLE_LICENCES, len) == 0) {
     type = TSDB_MGMT_TABLE_GRANTS;
   } else if (strncasecmp(name, TSDB_INS_TABLE_VGROUPS, len) == 0) {
@@ -115,6 +113,8 @@ static int32_t convertToRetrieveType(char *name, int32_t len) {
     type = TSDB_MGMT_TABLE_STREAM_TASKS;
   } else if (strncasecmp(name, TSDB_INS_TABLE_USER_PRIVILEGES, len) == 0) {
     type = TSDB_MGMT_TABLE_PRIVILEGES;
+  } else if (strncasecmp(name, TSDB_INS_TABLE_MOUNTS, len) == 0) {
+    type = TSDB_MGMT_TABLE_MOUNT;
   } else {
     mError("invalid show name:%s len:%d", name, len);
   }
