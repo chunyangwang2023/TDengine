@@ -93,6 +93,15 @@ cmd ::= DROP USER user_name(A).                                                 
 sysinfo_opt(A) ::= .                                                              { A = 1; }
 sysinfo_opt(A) ::= SYSINFO NK_INTEGER(B).                                         { A = taosStr2Int8(B.z, NULL, 10); }
 
+/************************************************ create/drop mount **********************************************/
+cmd ::= CREATE MOUNT mount_name(A) mount_opt(B) FROM NK_STRING(C).                { pCxt->pRootNode = createCreateMountStmt(pCxt, &A, B, &C); }
+cmd ::= DROP MOUNT mount_name(A).                                                 { pCxt->pRootNode = createDropMountStmt(pCxt, &A); }
+
+%type mount_opt                                                                   { int32_t }
+%destructor mount_opt                                                             { }
+mount_opt(A) ::= .                                                                { A = 1; }
+mount_opt(A) ::= ON DNODE NK_INTEGER(B).                                          { A = taosStr2Int32(B.z, NULL, 10); }
+
 /************************************************ grant/revoke ********************************************************/
 cmd ::= GRANT privileges(A) ON priv_level(B) with_opt(D) TO user_name(C).         { pCxt->pRootNode = createGrantStmt(pCxt, A, &B, &C, D); }
 cmd ::= REVOKE privileges(A) ON priv_level(B) with_opt(D) FROM user_name(C).      { pCxt->pRootNode = createRevokeStmt(pCxt, A, &B, &C, D); }
@@ -423,6 +432,7 @@ col_name(A) ::= column_name(B).                                                 
 
 /************************************************ show ****************************************************************/
 cmd ::= SHOW DNODES.                                                              { pCxt->pRootNode = createShowStmt(pCxt, QUERY_NODE_SHOW_DNODES_STMT); }
+cmd ::= SHOW MOUNTS.                                                              { pCxt->pRootNode = createShowStmt(pCxt, QUERY_NODE_SHOW_MOUNTS_STMT); }
 cmd ::= SHOW USERS.                                                               { pCxt->pRootNode = createShowStmt(pCxt, QUERY_NODE_SHOW_USERS_STMT); }
 cmd ::= SHOW USER PRIVILEGES.                                                     { pCxt->pRootNode = createShowStmt(pCxt, QUERY_NODE_SHOW_USER_PRIVILEGES_STMT); }
 cmd ::= SHOW DATABASES.                                                           { pCxt->pRootNode = createShowStmt(pCxt, QUERY_NODE_SHOW_DATABASES_STMT); }
@@ -714,6 +724,10 @@ column_alias(A) ::= NK_ID(B).                                                   
 %type user_name                                                                   { SToken }
 %destructor user_name                                                             { }
 user_name(A) ::= NK_ID(B).                                                        { A = B; }
+
+%type mount_name                                                                   { SToken }
+%destructor mount_name                                                             { }
+mount_name(A) ::= NK_ID(B).                                                        { A = B; }
 
 %type topic_name                                                                  { SToken }
 %destructor topic_name                                                            { }

@@ -338,6 +338,10 @@ SNode* nodesMakeNode(ENodeType type) {
       return makeNode(type, sizeof(SAlterUserStmt));
     case QUERY_NODE_DROP_USER_STMT:
       return makeNode(type, sizeof(SDropUserStmt));
+    case QUERY_NODE_CREATE_MOUNT_STMT:
+      return makeNode(type, sizeof(SCreateMountStmt));
+    case QUERY_NODE_DROP_MOUNT_STMT:
+      return makeNode(type, sizeof(SDropMountStmt));
     case QUERY_NODE_USE_DATABASE_STMT:
       return makeNode(type, sizeof(SUseDatabaseStmt));
     case QUERY_NODE_CREATE_DNODE_STMT:
@@ -414,6 +418,7 @@ SNode* nodesMakeNode(ENodeType type) {
     case QUERY_NODE_SHOW_STREAMS_STMT:
     case QUERY_NODE_SHOW_TABLES_STMT:
     case QUERY_NODE_SHOW_USERS_STMT:
+    case QUERY_NODE_SHOW_MOUNTS_STMT:
     case QUERY_NODE_SHOW_LICENCES_STMT:
     case QUERY_NODE_SHOW_VGROUPS_STMT:
     case QUERY_NODE_SHOW_TOPICS_STMT:
@@ -889,6 +894,8 @@ void nodesDestroyNode(SNode* pNode) {
     case QUERY_NODE_CREATE_USER_STMT:   // no pointer field
     case QUERY_NODE_ALTER_USER_STMT:    // no pointer field
     case QUERY_NODE_DROP_USER_STMT:     // no pointer field
+    case QUERY_NODE_CREATE_MOUNT_STMT:   // no pointer field
+    case QUERY_NODE_DROP_MOUNT_STMT:     // no pointer field
     case QUERY_NODE_USE_DATABASE_STMT:  // no pointer field
     case QUERY_NODE_CREATE_DNODE_STMT:  // no pointer field
     case QUERY_NODE_DROP_DNODE_STMT:    // no pointer field
@@ -976,6 +983,7 @@ void nodesDestroyNode(SNode* pNode) {
     case QUERY_NODE_SHOW_STREAMS_STMT:
     case QUERY_NODE_SHOW_TABLES_STMT:
     case QUERY_NODE_SHOW_USERS_STMT:
+    case QUERY_NODE_SHOW_MOUNTS_STMT:
     case QUERY_NODE_SHOW_LICENCES_STMT:
     case QUERY_NODE_SHOW_VGROUPS_STMT:
     case QUERY_NODE_SHOW_TOPICS_STMT:

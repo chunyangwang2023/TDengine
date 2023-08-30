@@ -67,6 +67,35 @@ static void trimEscape(SToken* pName) {
   }
 }
 
+static bool checkMountName(SAstCreateContext* pCxt, SToken* pMountName) {
+  if (NULL == pMountName) {
+    pCxt->errCode = TSDB_CODE_PAR_SYNTAX_ERROR;
+  } else {
+    if (pMountName->n >= TSDB_MOUNT_NAME_LEN) {
+      pCxt->errCode = generateSyntaxErrMsg(&pCxt->msgBuf, TSDB_CODE_PAR_MOUNT_NAME_TOO_LONG);
+    }
+  }
+  if (TSDB_CODE_SUCCESS == pCxt->errCode) {
+    trimEscape(pMountName);
+  }
+  return TSDB_CODE_SUCCESS == pCxt->errCode;
+}
+
+static bool checkMountPath(SAstCreateContext* pCxt, const SToken* pMountPathToken, char* pMountPath) {
+  if (NULL == pMountPathToken) {
+    pCxt->errCode = TSDB_CODE_PAR_SYNTAX_ERROR;
+  } else if (pMountPathToken->n >= (TSDB_MOUNT_PATH_LEN)) {
+    pCxt->errCode = generateSyntaxErrMsg(&pCxt->msgBuf, TSDB_CODE_PAR_MOUNT_PATH_TOO_LONG);
+  } else {
+    strncpy(pMountPath, pMountPathToken->z, pMountPathToken->n);
+    strdequote(pMountPath);
+    if (strtrim(pMountPath) <= 0) {
+      pCxt->errCode = generateSyntaxErrMsg(&pCxt->msgBuf, TSDB_CODE_PAR_MOUNT_PATH_EMPTY);
+    }
+  }
+  return TSDB_CODE_SUCCESS == pCxt->errCode;
+}
+
 static bool checkUserName(SAstCreateContext* pCxt, SToken* pUserName) {
   if (NULL == pUserName) {
     pCxt->errCode = TSDB_CODE_PAR_SYNTAX_ERROR;
@@ -1678,6 +1707,32 @@ SNode* createDropUserStmt(SAstCreateContext* pCxt, SToken* pUserName) {
   SDropUserStmt* pStmt = (SDropUserStmt*)nodesMakeNode(QUERY_NODE_DROP_USER_STMT);
   CHECK_OUT_OF_MEM(pStmt);
   COPY_STRING_FORM_ID_TOKEN(pStmt->userName, pUserName);
+  return (SNode*)pStmt;
+}
+
+SNode* createCreateMountStmt(SAstCreateContext* pCxt, SToken* pMountName, int32_t mountDnodeId,
+                             const SToken* pMountPath) {
+  CHECK_PARSER_STATUS(pCxt);
+  char mountPath[TSDB_MOUNT_PATH_LEN + 1] = {0};
+  if (!checkMountName(pCxt, pMountName) || !checkMountPath(pCxt, pMountPath, mountPath)) {
+    return NULL;
+  }
+  SCreateMountStmt* pStmt = (SCreateMountStmt*)nodesMakeNode(QUERY_NODE_CREATE_MOUNT_STMT);
+  CHECK_OUT_OF_MEM(pStmt);
+  COPY_STRING_FORM_ID_TOKEN(pStmt->mountName, pMountName);
+  strcpy(pStmt->mountPath, mountPath);
+  pStmt->mountDnodeId = mountDnodeId;
+  return (SNode*)pStmt;
+}
+
+SNode* createDropMountStmt(SAstCreateContext* pCxt, SToken* pMountName) {
+  CHECK_PARSER_STATUS(pCxt);
+  if (!checkMountName(pCxt, pMountName)) {
+    return NULL;
+  }
+  SDropMountStmt* pStmt = (SDropMountStmt*)nodesMakeNode(QUERY_NODE_DROP_MOUNT_STMT);
+  CHECK_OUT_OF_MEM(pStmt);
+  COPY_STRING_FORM_ID_TOKEN(pStmt->mountName, pMountName);
   return (SNode*)pStmt;
 }
 

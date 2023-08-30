@@ -129,6 +129,10 @@ const char* nodesNodeName(ENodeType type) {
       return "AlterUserStmt";
     case QUERY_NODE_DROP_USER_STMT:
       return "DropUserStmt";
+    case QUERY_NODE_CREATE_MOUNT_STMT:
+      return "CreateMountStmt";
+    case QUERY_NODE_DROP_MOUNT_STMT:
+      return "DropMountStmt";
     case QUERY_NODE_USE_DATABASE_STMT:
       return "UseDatabaseStmt";
     case QUERY_NODE_CREATE_DNODE_STMT:
@@ -219,6 +223,8 @@ const char* nodesNodeName(ENodeType type) {
       return "ShowTagsStmt";
     case QUERY_NODE_SHOW_USERS_STMT:
       return "ShowUsersStmt";
+    case QUERY_NODE_SHOW_MOUNTS_STMT:
+      return "ShowMountsStmt";
     case QUERY_NODE_SHOW_LICENCES_STMT:
       return "ShowGrantsStmt";
     case QUERY_NODE_SHOW_VGROUPS_STMT:
@@ -5268,6 +5274,50 @@ static int32_t jsonToDropUserStmt(const SJson* pJson, void* pObj) {
   return tjsonGetStringValue(pJson, jkDropUserStmtUserName, pNode->userName);
 }
 
+static const char* jkCreateMountStmtMountName = "MountName";
+static const char* jkCreateMountStmtMountPath = "MountPath";
+static const char* jkCreateMountStmtMountDnodeId = "MountDnodeId";
+
+static int32_t createMountStmtToJson(const void* pObj, SJson* pJson) {
+  const SCreateMountStmt* pNode = (const SCreateMountStmt*)pObj;
+
+  int32_t code = tjsonAddStringToObject(pJson, jkCreateMountStmtMountName, pNode->mountName);
+  if (TSDB_CODE_SUCCESS == code) {
+    code = tjsonAddStringToObject(pJson, jkCreateMountStmtMountPath, pNode->mountPath);
+  }
+  if (TSDB_CODE_SUCCESS == code) {
+    code = tjsonAddIntegerToObject(pJson, jkCreateMountStmtMountDnodeId, pNode->mountDnodeId);
+  }
+
+  return code;
+}
+
+static int32_t jsonToCreateMountStmt(const SJson* pJson, void* pObj) {
+  SCreateMountStmt* pNode = (SCreateMountStmt*)pObj;
+
+  int32_t code = tjsonGetStringValue(pJson, jkCreateMountStmtMountName, pNode->mountName);
+  if (TSDB_CODE_SUCCESS == code) {
+    code = tjsonGetStringValue(pJson, jkCreateMountStmtMountPath, pNode->mountPath);
+  }
+  if (TSDB_CODE_SUCCESS == code) {
+    code = tjsonGetIntValue(pJson, jkCreateMountStmtMountDnodeId, &pNode->mountDnodeId);
+  }
+
+  return code;
+}
+
+static const char* jkDropMountStmtMountName = "MountName";
+
+static int32_t dropMountStmtToJson(const void* pObj, SJson* pJson) {
+  const SDropMountStmt* pNode = (const SDropMountStmt*)pObj;
+  return tjsonAddStringToObject(pJson, jkDropMountStmtMountName, pNode->mountName);
+}
+
+static int32_t jsonToDropMountStmt(const SJson* pJson, void* pObj) {
+  SDropMountStmt* pNode = (SDropMountStmt*)pObj;
+  return tjsonGetStringValue(pJson, jkDropMountStmtMountName, pNode->mountName);
+}
+
 static const char* jkUseDatabaseStmtDbName = "DbName";
 
 static int32_t useDatabaseStmtToJson(const void* pObj, SJson* pJson) {
@@ -6017,6 +6067,10 @@ static int32_t showUsersStmtToJson(const void* pObj, SJson* pJson) { return show
 
 static int32_t jsonToShowUsersStmt(const SJson* pJson, void* pObj) { return jsonToShowStmt(pJson, pObj); }
 
+static int32_t showMountsStmtToJson(const void* pObj, SJson* pJson) { return showStmtToJson(pObj, pJson); }
+
+static int32_t jsonToShowMountsStmt(const SJson* pJson, void* pObj) { return jsonToShowStmt(pJson, pObj); }
+
 static int32_t showVgroupsStmtToJson(const void* pObj, SJson* pJson) { return showStmtToJson(pObj, pJson); }
 
 static int32_t jsonToShowVgroupsStmt(const SJson* pJson, void* pObj) { return jsonToShowStmt(pJson, pObj); }
@@ -6401,6 +6455,10 @@ static int32_t specificNodeToJson(const void* pObj, SJson* pJson) {
       return alterUserStmtToJson(pObj, pJson);
     case QUERY_NODE_DROP_USER_STMT:
       return dropUserStmtToJson(pObj, pJson);
+    case QUERY_NODE_CREATE_MOUNT_STMT:
+      return createMountStmtToJson(pObj, pJson);
+    case QUERY_NODE_DROP_MOUNT_STMT:
+      return dropMountStmtToJson(pObj, pJson);
     case QUERY_NODE_USE_DATABASE_STMT:
       return useDatabaseStmtToJson(pObj, pJson);
     case QUERY_NODE_CREATE_DNODE_STMT:
@@ -6481,6 +6539,8 @@ static int32_t specificNodeToJson(const void* pObj, SJson* pJson) {
       return showTagsStmtToJson(pObj, pJson);
     case QUERY_NODE_SHOW_USERS_STMT:
       return showUsersStmtToJson(pObj, pJson);
+    case QUERY_NODE_SHOW_MOUNTS_STMT:
+      return showMountsStmtToJson(pObj, pJson);
     case QUERY_NODE_SHOW_VGROUPS_STMT:
       return showVgroupsStmtToJson(pObj, pJson);
     case QUERY_NODE_SHOW_CONSUMERS_STMT:
@@ -6711,6 +6771,10 @@ static int32_t jsonToSpecificNode(const SJson* pJson, void* pObj) {
       return jsonToAlterUserStmt(pJson, pObj);
     case QUERY_NODE_DROP_USER_STMT:
       return jsonToDropUserStmt(pJson, pObj);
+    case QUERY_NODE_CREATE_MOUNT_STMT:
+      return jsonToCreateMountStmt(pJson, pObj);
+    case QUERY_NODE_DROP_MOUNT_STMT:
+      return jsonToDropMountStmt(pJson, pObj);
     case QUERY_NODE_USE_DATABASE_STMT:
       return jsonToUseDatabaseStmt(pJson, pObj);
     case QUERY_NODE_CREATE_DNODE_STMT:
@@ -6791,6 +6855,8 @@ static int32_t jsonToSpecificNode(const SJson* pJson, void* pObj) {
       return jsonToShowTagsStmt(pJson, pObj);
     case QUERY_NODE_SHOW_USERS_STMT:
       return jsonToShowUsersStmt(pJson, pObj);
+    case QUERY_NODE_SHOW_MOUNTS_STMT:
+      return jsonToShowMountsStmt(pJson, pObj);
     case QUERY_NODE_SHOW_VGROUPS_STMT:
       return jsonToShowVgroupsStmt(pJson, pObj);
     case QUERY_NODE_SHOW_CONSUMERS_STMT:

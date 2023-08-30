@@ -237,6 +237,18 @@ typedef struct SDropUserStmt {
   char      userName[TSDB_USER_LEN];
 } SDropUserStmt;
 
+typedef struct SCreateMountStmt {
+  ENodeType type;
+  char    mountName[TSDB_MOUNT_NAME_LEN];
+  char    mountPath[TSDB_MOUNT_PATH_LEN];
+  int32_t mountDnodeId;
+} SCreateMountStmt;
+
+typedef struct SDropMountStmt {
+  ENodeType type;
+  char mountName[TSDB_MOUNT_NAME_LEN];
+} SDropMountStmt;
+
 typedef struct SCreateDnodeStmt {
   ENodeType type;
   char      fqdn[TSDB_FQDN_LEN];

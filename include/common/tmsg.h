@@ -140,6 +140,7 @@ typedef enum _mgmt_table {
   TSDB_MGMT_TABLE_APPS,
   TSDB_MGMT_TABLE_STREAM_TASKS,
   TSDB_MGMT_TABLE_PRIVILEGES,
+  TSDB_MGMT_TABLE_MOUNT,
   TSDB_MGMT_TABLE_MAX,
 } EShowType;
 
@@ -640,6 +641,22 @@ typedef struct {
 
 int32_t tSerializeSConnectRsp(void* buf, int32_t bufLen, SConnectRsp* pRsp);
 int32_t tDeserializeSConnectRsp(void* buf, int32_t bufLen, SConnectRsp* pRsp);
+
+typedef struct {
+  char    mountName[TSDB_MOUNT_NAME_LEN];
+  char    mountPath[TSDB_MOUNT_PATH_LEN];
+  int32_t mountDnodeId;
+} SCreateMountReq;
+
+int32_t tSerializeSCreateMountReq(void* buf, int32_t bufLen, SCreateMountReq* pReq);
+int32_t tDeserializeSCreateMountReq(void* buf, int32_t bufLen, SCreateMountReq* pReq);
+
+typedef struct {
+  char mountName[TSDB_MOUNT_NAME_LEN];
+} SDropMountReq;
+
+int32_t tSerializeSDropMountReq(void* buf, int32_t bufLen, SDropMountReq* pReq);
+int32_t tDeserializeSDropMountReq(void* buf, int32_t bufLen, SDropMountReq* pReq);
 
 typedef struct {
   char    user[TSDB_USER_LEN];
