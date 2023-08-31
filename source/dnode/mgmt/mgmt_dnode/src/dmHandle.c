@@ -189,10 +189,96 @@ static void dmGetServerRunStatus(SDnodeMgmt *pMgmt, SServerStatusRsp *pStatus) {
 }
 
 int32_t dmGetMountInfo(SDnodeMgmt *pMgmt, SGetMountInfoReq *pReq, SGetMountInfoRsp *pRsp) {
-  pRsp->jsonLen = 100;
-  pRsp->jsonStr = taosMemoryCalloc(1, pRsp->jsonLen);
-  strcpy(pRsp->jsonStr, "hello kitty");
-  return 0;
+  int32_t   ret = -1;
+  TdFilePtr pCfgFile = NULL;
+  TdFilePtr pJsonFile = NULL;
+  char      workdir[256] = {0};
+  char      cfgfile[256] = {0};
+  char      jsonfile[256] = {0};
+  snprintf(workdir, 256, "cd %s;", tsTempDir);
+  snprintf(cfgfile, 256, "%s/taos.cfg", tsTempDir);
+  snprintf(jsonfile, 256, "%s/sdb.json", tsTempDir);
+
+  pCfgFile = taosOpenFile(cfgfile, TD_FILE_CREATE | TD_FILE_WRITE | TD_FILE_TRUNC);
+  if (pCfgFile == NULL) {
+    terrno = TAOS_SYSTEM_ERROR(errno);
+    dError("failed to write %s since %s", cfgfile, terrstr());
+    goto _OVER;
+  }
+  char    buf[1024];
+  int32_t bufLen;
+  bufLen = snprintf(buf, 1024, "firstEp    localhost:7100 \r\n");
+  if (taosWriteFile(pCfgFile, buf, bufLen) != bufLen) goto _OVER;
+  bufLen = snprintf(buf, 1024, "fqdn       localhost \r\n");
+  if (taosWriteFile(pCfgFile, buf, bufLen) != bufLen) goto _OVER;
+  bufLen = snprintf(buf, 1024, "serverPort 7100 \r\n");
+  if (taosWriteFile(pCfgFile, buf, bufLen) != bufLen) goto _OVER;
+  bufLen = snprintf(buf, 1024, "dataDir    %s \r\n", pReq->mountPath);
+  if (taosWriteFile(pCfgFile, buf, bufLen) != bufLen) goto _OVER;
+  bufLen = snprintf(buf, 1024, "logDir     %s \r\n", tsTempDir);
+  if (taosWriteFile(pCfgFile, buf, bufLen) != bufLen) goto _OVER;
+
+  UNUSED(taosFsyncFile(pCfgFile));
+  taosCloseFile(&pCfgFile);
+
+  char dumpCmd[1024] = {0};
+  sprintf(dumpCmd, "%s %s -s -c %s", workdir, tsProcPath, cfgfile);
+  dInfo("start to execute %s", dumpCmd);
+
+  int32_t code = system(dumpCmd);
+  int32_t repeatTimes = 0;
+  while (code < 0) {
+    taosDflSignal(SIGCHLD);
+    if (repeatTimes++ >= 10) {
+      terrno = TAOS_SYSTEM_ERROR(errno);
+      dError("failed to execute %s since %s", dumpCmd, terrstr());
+      goto _OVER;
+    }
+  }
+
+  pJsonFile = taosOpenFile(jsonfile, TD_FILE_READ);
+  if (pJsonFile == NULL) {
+    terrno = TAOS_SYSTEM_ERROR(errno);
+    dError("failed to read %s since %s", jsonfile, terrstr());
+    goto _OVER;
+  }
+
+  int64_t size = 0;
+  if (taosFStatFile(pJsonFile, &size, NULL) < 0) {
+    terrno = TAOS_SYSTEM_ERROR(errno);
+    dError("failed to fstat file:%s since %s", jsonfile, terrstr());
+    goto _OVER;
+  }
+  pRsp->jsonLen = size;
+
+  if (size < 128 || size > 5 * 1024 * 1024) {
+    dError("failed to read %s since invalid size:%d", jsonfile, pRsp->jsonLen);
+    terrno = TSDB_CODE_INVALID_JSON_FORMAT;
+    goto _OVER;
+  }
+
+  pRsp->jsonStr = taosMemoryMalloc(size + 1);
+  if (pRsp->jsonStr == NULL) {
+    terrno = TSDB_CODE_OUT_OF_MEMORY;
+    dError("failed to read file:%s while malloc memory since %s", jsonfile, terrstr());
+    goto _OVER;
+  }
+
+  if (taosReadFile(pJsonFile, pRsp->jsonStr, size) != size) {
+    terrno = TAOS_SYSTEM_ERROR(errno);
+    dError("failed to read file:%s since %s", jsonfile, terrstr());
+    goto _OVER;
+  }
+  pRsp->jsonStr[size] = '\0';
+  ret = 0;
+
+_OVER:
+  taosCloseFile(&pCfgFile);
+  taosCloseFile(&pJsonFile);
+  taosRemoveFile(cfgfile);
+  taosRemoveFile(jsonfile);
+
+  return ret;
 }
 
 int32_t dmProcessGetMountInfo(SDnodeMgmt *pMgmt, SRpcMsg *pMsg) {
