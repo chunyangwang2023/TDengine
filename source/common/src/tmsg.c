@@ -1311,15 +1311,69 @@ int32_t tDeserializeSDropMountReq(void *buf, int32_t bufLen, SDropMountReq *pReq
   return 0;
 }
 
-int32_t tSerializeSGetMountInfoReq(void *buf, int32_t bufLen, SGetMountInfoReq *pReq) { return 0; }
+int32_t tSerializeSGetMountInfoReq(void *buf, int32_t bufLen, SGetMountInfoReq *pReq) {
+  SEncoder encoder = {0};
+  tEncoderInit(&encoder, buf, bufLen);
 
-int32_t tDeserializeSGetMountInfoReq(void *buf, int32_t bufLen, SGetMountInfoReq *pReq) { return 0; }
+  if (tStartEncode(&encoder) < 0) return -1;
+  if (tEncodeCStr(&encoder, pReq->mountName) < 0) return -1;
+  if (tEncodeCStr(&encoder, pReq->mountPath) < 0) return -1;
+  if (tEncodeI32(&encoder, pReq->mountDnodeId) < 0) return -1;
+  tEndEncode(&encoder);
 
-void tFreeSGetMountInfoReq(SGetMountInfoReq *pReq) { }
+  int32_t tlen = encoder.pos;
+  tEncoderClear(&encoder);
+  return tlen;
+}
 
-int32_t tSerializeSGetMountInfoRsp(void *buf, int32_t bufLen, SGetMountInfoRsp *pRsp) { return 0; }
+int32_t tDeserializeSGetMountInfoReq(void *buf, int32_t bufLen, SGetMountInfoReq *pReq) {
+  SDecoder decoder = {0};
+  tDecoderInit(&decoder, buf, bufLen);
 
-int32_t tDeserializeSGetMountInfoRsp(void *buf, int32_t bufLen, SGetMountInfoRsp *pRsp) { return 0; }
+  if (tStartDecode(&decoder) < 0) return -1;
+  if (tDecodeCStrTo(&decoder, pReq->mountName) < 0) return -1;
+  if (tDecodeCStrTo(&decoder, pReq->mountPath) < 0) return -1;
+  if (tDecodeI32(&decoder, &pReq->mountDnodeId) < 0) return -1;
+  tEndDecode(&decoder);
+
+  tDecoderClear(&decoder);
+  return 0;
+}
+
+int32_t tSerializeSGetMountInfoRsp(void *buf, int32_t bufLen, SGetMountInfoRsp *pRsp) {
+  SEncoder encoder = {0};
+  tEncoderInit(&encoder, buf, bufLen);
+
+  if (tStartEncode(&encoder) < 0) return -1;
+  if (tEncodeI32(&encoder, pRsp->jsonLen) < 0) return -1;
+  if (tEncodeCStr(&encoder, pRsp->jsonStr) < 0) return -1;
+  tEndEncode(&encoder);
+
+  int32_t tlen = encoder.pos;
+  tEncoderClear(&encoder);
+  return tlen;
+}
+
+int32_t tDeserializeSGetMountInfoRsp(void *buf, int32_t bufLen, SGetMountInfoRsp *pRsp) {
+  SDecoder decoder = {0};
+  tDecoderInit(&decoder, buf, bufLen);
+
+  if (tStartDecode(&decoder) < 0) return -1;
+  if (tDecodeI32(&decoder, &pRsp->jsonLen) < 0) return -1;
+  
+  pRsp->jsonStr = taosMemoryCalloc(1, pRsp->jsonLen);
+  if (pRsp->jsonStr == NULL) {
+    tDecoderClear(&decoder);
+    terrno = TSDB_CODE_OUT_OF_MEMORY;
+    return -1;
+  }
+
+  if (tDecodeCStrTo(&decoder, pRsp->jsonStr) < 0) return -1;
+  tEndDecode(&decoder);
+
+  tDecoderClear(&decoder);
+  return 0;
+}
 
 void tFreeSGetMountInfoRsp(SGetMountInfoRsp *pRsp) {
   taosMemoryFree(pRsp->jsonStr);

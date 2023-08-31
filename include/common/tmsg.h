@@ -666,7 +666,6 @@ typedef struct {
 
 int32_t tSerializeSGetMountInfoReq(void* buf, int32_t bufLen, SGetMountInfoReq* pReq);
 int32_t tDeserializeSGetMountInfoReq(void* buf, int32_t bufLen, SGetMountInfoReq* pReq);
-void    tFreeSGetMountInfoReq(SGetMountInfoReq* pReq);
 
 typedef struct {
   int32_t jsonLen;
