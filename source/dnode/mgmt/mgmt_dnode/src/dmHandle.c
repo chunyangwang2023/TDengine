@@ -188,6 +188,48 @@ static void dmGetServerRunStatus(SDnodeMgmt *pMgmt, SServerStatusRsp *pStatus) {
   taosArrayDestroy(vinfo.pVloads);
 }
 
+int32_t dmGetMountInfo(SDnodeMgmt *pMgmt, SGetMountInfoReq *pReq, SGetMountInfoRsp *pRsp) {
+  pRsp->jsonLen = 100;
+  pRsp->jsonStr = taosMemoryCalloc(1, pRsp->jsonLen);
+  strcpy(pRsp->jsonStr, "hello kitty");
+  return 0;
+}
+
+int32_t dmProcessGetMountInfo(SDnodeMgmt *pMgmt, SRpcMsg *pMsg) {
+  SGetMountInfoReq req = {0};
+  SGetMountInfoRsp rsp = {0};
+
+  if (tDeserializeSGetMountInfoReq(pMsg->pCont, pMsg->contLen, &req) != 0) {
+    dError("failed to deserialize mount msg since %s", terrstr());
+    return -1;
+  } else {
+    dInfo("mount:%s, get-mount-info req is received, path:%s", req.mountName, req.mountPath);
+  }
+
+  if (dmGetMountInfo(pMgmt, &req, &rsp) != 0) {
+    dError("mount:%s, failed to get mount info since %s", req.mountName, terrstr());
+    return -1;
+  }
+
+  SRpcMsg rspMsg = {.info = pMsg->info};
+  int32_t rspLen = tSerializeSGetMountInfoRsp(NULL, 0, &rsp);
+  if (rspLen < 0) {
+    terrno = TSDB_CODE_OUT_OF_MEMORY;
+    return -1;
+  }
+
+  void *pRsp = rpcMallocCont(rspLen);
+  if (pRsp == NULL) {
+    terrno = TSDB_CODE_OUT_OF_MEMORY;
+    return -1;
+  }
+
+  tSerializeSGetMountInfoRsp(pRsp, rspLen, &rsp);
+  pMsg->info.rsp = pRsp;
+  pMsg->info.rspLen = rspLen;
+  return 0;
+}
+
 int32_t dmProcessServerRunStatus(SDnodeMgmt *pMgmt, SRpcMsg *pMsg) {
   dDebug("server run status req is received");
   SServerStatusRsp statusRsp = {0};
@@ -352,7 +394,8 @@ SArray *dmGetMsgHandles() {
   if (dmSetMgmtHandle(pArray, TDMT_DND_CONFIG_DNODE, dmPutNodeMsgToMgmtQueue, 0) == NULL) goto _OVER;
   if (dmSetMgmtHandle(pArray, TDMT_DND_SERVER_STATUS, dmPutNodeMsgToMgmtQueue, 0) == NULL) goto _OVER;
   if (dmSetMgmtHandle(pArray, TDMT_DND_SYSTABLE_RETRIEVE, dmPutNodeMsgToMgmtQueue, 0) == NULL) goto _OVER;
-
+  if (dmSetMgmtHandle(pArray, TDMT_MND_GET_MOUNT_INFO, dmPutNodeMsgToMgmtQueue, 0) == NULL) goto _OVER;
+  
   // Requests handled by MNODE
   if (dmSetMgmtHandle(pArray, TDMT_MND_GRANT, dmPutNodeMsgToMgmtQueue, 0) == NULL) goto _OVER;
   if (dmSetMgmtHandle(pArray, TDMT_MND_AUTH_RSP, dmPutNodeMsgToMgmtQueue, 0) == NULL) goto _OVER;

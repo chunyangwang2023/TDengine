@@ -662,7 +662,6 @@ typedef struct {
   char    mountName[TSDB_MOUNT_NAME_LEN];
   char    mountPath[TSDB_MOUNT_PATH_LEN];
   int32_t mountDnodeId;
-  SArray* mountDbs;  // char db[TSDB_DB_FNAME_LEN]
 } SGetMountInfoReq;
 
 int32_t tSerializeSGetMountInfoReq(void* buf, int32_t bufLen, SGetMountInfoReq* pReq);
@@ -670,9 +669,8 @@ int32_t tDeserializeSGetMountInfoReq(void* buf, int32_t bufLen, SGetMountInfoReq
 void    tFreeSGetMountInfoReq(SGetMountInfoReq* pReq);
 
 typedef struct {
-  SArray* pDbs;      // SDbObj
-  SArray* pVgroups;  // SVgObj
-  SArray* pStables;  // STableObj
+  int32_t jsonLen;
+  char*   jsonStr;
 } SGetMountInfoRsp;
 
 int32_t tSerializeSGetMountInfoRsp(void* buf, int32_t bufLen, SGetMountInfoRsp* pRsp);

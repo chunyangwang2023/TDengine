@@ -225,13 +225,10 @@ static int32_t mndGetMountInfo(SMnode *pMnode, SDnodeObj *pDnode, SCreateMountRe
   tstrncpy(req.mountName, pMount->mountName, sizeof(req.mountName));
   tstrncpy(req.mountPath, pMount->mountPath, sizeof(req.mountPath));
   req.mountDnodeId = pMount->mountDnodeId;
-  req.mountDbs = taosArrayInit(1, TSDB_DB_FNAME_LEN);
-  taosArrayPush(req.mountDbs, "tdlite");
 
   int32_t contLen = tSerializeSGetMountInfoReq(NULL, 0, &req);
   void   *pHead = rpcMallocCont(contLen);
   tSerializeSGetMountInfoReq(pHead, contLen, &req);
-  tFreeSGetMountInfoReq(&req);
 
   SRpcMsg rpcMsg = {
       .pCont = pHead,
@@ -250,9 +247,7 @@ static int32_t mndGetMountInfo(SMnode *pMnode, SDnodeObj *pDnode, SCreateMountRe
   tmsgSendRecv(&epSet, &rpcMsg, &rpcRsp);
   if (rpcRsp.code == 0 && rpcRsp.pCont != NULL && rpcRsp.contLen > 0 &&
       tDeserializeSGetMountInfoRsp(rpcRsp.pCont, rpcRsp.contLen, pRsp) == 0) {
-    mInfo("mount:%s, get-mount-info rsp is received, db:%d vgroup:%d stb:%d", pMount->mountName,
-          (int32_t)taosArrayGetSize(pRsp->pDbs), (int32_t)taosArrayGetSize(pRsp->pVgroups),
-          (int32_t)taosArrayGetSize(pRsp->pStables));
+    mInfo("mount:%s, get-mount-info rsp is received, len:%d", pMount->mountName, pRsp->jsonLen);
     return 0;
   } else {
     mError("mount:%s, failed to send get-mount-info req to dnode since %s", pMount->mountName, tstrerror(rpcRsp.code));
