@@ -188,7 +188,8 @@ static int32_t mndSetCreateMountUndoActions(SMnode *pMnode, STrans *pTrans, SDno
   return 0;
 }
 
-static int32_t mndCreateMount(SMnode *pMnode, SDnodeObj *pDnode, SCreateMountReq *pCreate, SRpcMsg *pReq) {
+static int32_t mndCreateMount(SMnode *pMnode, SDnodeObj *pDnode, SCreateMountReq *pCreate, SGetMountInfoRsp *pInfo,
+                              SRpcMsg *pReq) {
   int32_t code = -1;
 
   SMountObj mountObj = {0};
@@ -219,13 +220,55 @@ _OVER:
   return code;
 }
 
+static int32_t mndGetMountInfo(SMnode *pMnode, SDnodeObj *pDnode, SCreateMountReq *pMount, SGetMountInfoRsp *pRsp) {
+  SGetMountInfoReq req = {0};
+  tstrncpy(req.mountName, pMount->mountName, sizeof(req.mountName));
+  tstrncpy(req.mountPath, pMount->mountPath, sizeof(req.mountPath));
+  req.mountDnodeId = pMount->mountDnodeId;
+  req.mountDbs = taosArrayInit(1, TSDB_DB_FNAME_LEN);
+  taosArrayPush(req.mountDbs, "tdlite");
+
+  int32_t contLen = tSerializeSGetMountInfoReq(NULL, 0, &req);
+  void   *pHead = rpcMallocCont(contLen);
+  tSerializeSGetMountInfoReq(pHead, contLen, &req);
+  tFreeSGetMountInfoReq(&req);
+
+  SRpcMsg rpcMsg = {
+      .pCont = pHead,
+      .contLen = contLen,
+      .msgType = TDMT_MND_GET_MOUNT_INFO,
+      .info.ahandle = (void *)0x9537,
+      .info.refId = 0,
+      .info.noResp = 0,
+  };
+  SRpcMsg rpcRsp = {0};
+
+  mInfo("mount:%s, send get-mount-info req to dnode:%d path:%s", pMount->mountName, pMount->mountDnodeId,
+        pMount->mountPath);
+
+  SEpSet epSet = mndGetDnodeEpset(pDnode);
+  tmsgSendRecv(&epSet, &rpcMsg, &rpcRsp);
+  if (rpcRsp.code == 0 && rpcRsp.pCont != NULL && rpcRsp.contLen > 0 &&
+      tDeserializeSGetMountInfoRsp(rpcRsp.pCont, rpcRsp.contLen, pRsp) == 0) {
+    mInfo("mount:%s, get-mount-info rsp is received, db:%d vgroup:%d stb:%d", pMount->mountName,
+          (int32_t)taosArrayGetSize(pRsp->pDbs), (int32_t)taosArrayGetSize(pRsp->pVgroups),
+          (int32_t)taosArrayGetSize(pRsp->pStables));
+    return 0;
+  } else {
+    mError("mount:%s, failed to send get-mount-info req to dnode since %s", pMount->mountName, tstrerror(rpcRsp.code));
+    terrno = rpcRsp.code;
+    return -1;
+  }
+}
+
 static int32_t mndProcessCreateMountReq(SRpcMsg *pReq) {
-  SMnode         *pMnode = pReq->info.node;
-  int32_t         code = -1;
-  SMountObj      *pMount = NULL;
-  SUserObj       *pOperUser = NULL;
-  SDnodeObj      *pDnode = NULL;
-  SCreateMountReq createReq = {0};
+  SMnode          *pMnode = pReq->info.node;
+  int32_t          code = -1;
+  SMountObj       *pMount = NULL;
+  SUserObj        *pOperUser = NULL;
+  SDnodeObj       *pDnode = NULL;
+  SCreateMountReq  createReq = {0};
+  SGetMountInfoRsp mountInfo = {0};
 
   if (tDeserializeSCreateMountReq(pReq->pCont, pReq->contLen, &createReq) != 0) {
     terrno = TSDB_CODE_INVALID_MSG;
@@ -275,7 +318,11 @@ static int32_t mndProcessCreateMountReq(SRpcMsg *pReq) {
     goto _OVER;
   }
 
-  code = mndCreateMount(pMnode, pDnode, &createReq, pReq);
+  if (mndGetMountInfo(pMnode, pDnode, &createReq, &mountInfo) != 0) {
+    goto _OVER;
+  }
+
+  code = mndCreateMount(pMnode, pDnode, &createReq, &mountInfo, pReq);
   if (code == 0) code = TSDB_CODE_ACTION_IN_PROGRESS;
 
 _OVER:
@@ -286,6 +333,7 @@ _OVER:
   mndReleaseDnode(pMnode, pDnode);
   mndReleaseMount(pMnode, pMount);
   mndReleaseUser(pMnode, pOperUser);
+  tFreeSGetMountInfoRsp(&mountInfo);
 
   return code;
 }

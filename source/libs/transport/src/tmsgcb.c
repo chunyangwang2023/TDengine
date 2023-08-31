@@ -45,6 +45,10 @@ int32_t tmsgSendReq(const SEpSet* epSet, SRpcMsg* pMsg) {
   return code;
 }
 
+int32_t tmsgSendRecv(SEpSet* epSet, SRpcMsg* pMsg, SRpcMsg* pRsp) {
+  return (*defaultMsgCb.sendRecvFp)(epSet, pMsg, pRsp);
+}
+
 void tmsgSendRsp(SRpcMsg* pMsg) {
 #if 1
   rpcSendResponse(pMsg);

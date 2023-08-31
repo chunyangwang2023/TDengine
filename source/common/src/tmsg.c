@@ -1311,6 +1311,22 @@ int32_t tDeserializeSDropMountReq(void *buf, int32_t bufLen, SDropMountReq *pReq
   return 0;
 }
 
+int32_t tSerializeSGetMountInfoReq(void *buf, int32_t bufLen, SGetMountInfoReq *pReq) { return 0; }
+
+int32_t tDeserializeSGetMountInfoReq(void *buf, int32_t bufLen, SGetMountInfoReq *pReq) { return 0; }
+
+void tFreeSGetMountInfoReq(SGetMountInfoReq *pReq) { taosArrayDestroy(pReq->mountDbs); }
+
+int32_t tSerializeSGetMountInfoRsp(void *buf, int32_t bufLen, SGetMountInfoRsp *pRsp) { return 0; }
+
+int32_t tDeserializeSGetMountInfoRsp(void *buf, int32_t bufLen, SGetMountInfoRsp *pRsp) { return 0; }
+
+void tFreeSGetMountInfoRsp(SGetMountInfoRsp *pRsp) {
+  taosArrayDestroy(pRsp->pDbs);
+  taosArrayDestroy(pRsp->pVgroups);
+  taosArrayDestroy(pRsp->pStables);
+}
+
 int32_t tSerializeSCreateAcctReq(void *buf, int32_t bufLen, SCreateAcctReq *pReq) {
   SEncoder encoder = {0};
   tEncoderInit(&encoder, buf, bufLen);

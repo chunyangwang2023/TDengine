@@ -659,6 +659,27 @@ int32_t tSerializeSDropMountReq(void* buf, int32_t bufLen, SDropMountReq* pReq);
 int32_t tDeserializeSDropMountReq(void* buf, int32_t bufLen, SDropMountReq* pReq);
 
 typedef struct {
+  char    mountName[TSDB_MOUNT_NAME_LEN];
+  char    mountPath[TSDB_MOUNT_PATH_LEN];
+  int32_t mountDnodeId;
+  SArray* mountDbs;  // char db[TSDB_DB_FNAME_LEN]
+} SGetMountInfoReq;
+
+int32_t tSerializeSGetMountInfoReq(void* buf, int32_t bufLen, SGetMountInfoReq* pReq);
+int32_t tDeserializeSGetMountInfoReq(void* buf, int32_t bufLen, SGetMountInfoReq* pReq);
+void    tFreeSGetMountInfoReq(SGetMountInfoReq* pReq);
+
+typedef struct {
+  SArray* pDbs;      // SDbObj
+  SArray* pVgroups;  // SVgObj
+  SArray* pStables;  // STableObj
+} SGetMountInfoRsp;
+
+int32_t tSerializeSGetMountInfoRsp(void* buf, int32_t bufLen, SGetMountInfoRsp* pRsp);
+int32_t tDeserializeSGetMountInfoRsp(void* buf, int32_t bufLen, SGetMountInfoRsp* pRsp);
+void    tFreeSGetMountInfoRsp(SGetMountInfoRsp* pRsp);
+
+typedef struct {
   char    user[TSDB_USER_LEN];
   char    pass[TSDB_PASSWORD_LEN];
   int32_t maxUsers;
