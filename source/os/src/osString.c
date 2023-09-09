@@ -130,6 +130,10 @@ int32_t convUsed[2] = {0, 0};
 int32_t gConvMaxNum[2] = {0, 0};
 
 int32_t taosConvInit(void) {
+#ifdef _TD_SYLIXOS_
+  return 0;
+#endif
+
   int8_t M2C = 0;
   gConvMaxNum[M2C] = 512;
   gConvMaxNum[1 - M2C] = 512;
@@ -154,6 +158,10 @@ int32_t taosConvInit(void) {
 }
 
 void taosConvDestroy() {
+#ifdef _TD_SYLIXOS_
+  return;
+#endif
+
   int8_t M2C = 0;
   for (int32_t i = 0; i < gConvMaxNum[M2C]; ++i) {
     iconv_close(gConv[M2C][i].conv);
@@ -216,6 +224,10 @@ void taosReleaseConv(int32_t idx, iconv_t conv, ConvType type) {
 }
 
 bool taosMbsToUcs4(const char *mbs, size_t mbsLength, TdUcs4 *ucs4, int32_t ucs4_max_len, int32_t *len) {
+#ifdef _TD_SYLIXOS_
+  return false;
+#endif
+
 #ifdef DISALLOW_NCHAR_WITHOUT_ICONV
   printf("Nchar cannot be read and written without iconv, please install iconv library and recompile.\n");
   return -1;
@@ -244,6 +256,10 @@ bool taosMbsToUcs4(const char *mbs, size_t mbsLength, TdUcs4 *ucs4, int32_t ucs4
 }
 
 int32_t taosUcs4ToMbs(TdUcs4 *ucs4, int32_t ucs4_max_len, char *mbs) {
+#ifdef _TD_SYLIXOS_
+  return -1;
+#endif
+
 #ifdef DISALLOW_NCHAR_WITHOUT_ICONV
   printf("Nchar cannot be read and written without iconv, please install iconv library and recompile.\n");
   return -1;
@@ -261,6 +277,7 @@ int32_t taosUcs4ToMbs(TdUcs4 *ucs4, int32_t ucs4_max_len, char *mbs) {
   return (int32_t)(ucs4_max_len - outLen);
 #endif
 }
+
 bool taosValidateEncodec(const char *encodec) {
 #ifdef DISALLOW_NCHAR_WITHOUT_ICONV
   printf("Nchar cannot be read and written without iconv, please install iconv library and recompile.\n");

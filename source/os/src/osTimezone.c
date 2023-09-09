@@ -833,8 +833,12 @@ void taosSetSystemTimezone(const char *inTimezoneStr, char *outTimezoneStr, int8
 
 void taosGetSystemTimezone(char *outTimezoneStr, enum TdTimezone *tsTimezone) {
 #ifdef _TD_SYLIXOS_
-    int daylight = 0;
+  snprintf(outTimezoneStr, TD_TIMEZONE_LEN, "%s (%s, %+03lld00)", "sylix", tzname[0],
+           -timezone / 3600);
+  return;
 #endif
+
+  int daylight = 0;
 
 #ifdef WINDOWS
   char  value[100];
@@ -1027,12 +1031,7 @@ void taosGetSystemTimezone(char *outTimezoneStr, enum TdTimezone *tsTimezone) {
    * Asia/Shanghai   (CST, +0800)
    * Europe/London   (BST, +0100)
    */
-#ifdef _TD_SYLIXOS_
-  snprintf(outTimezoneStr, TD_TIMEZONE_LEN, "%s (%s, %+03lld00)", tz, tm1.tm_isdst ? tzname[daylight] : tzname[0],
-           -timezone / 3600);
-#else
   snprintf(outTimezoneStr, TD_TIMEZONE_LEN, "%s (%s, %+03ld00)", tz, tm1.tm_isdst ? tzname[daylight] : tzname[0],
            -timezone / 3600);
-#endif
 #endif
 }
