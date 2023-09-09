@@ -22,6 +22,7 @@
 #include "mndStb.h"
 #include "mndTrans.h"
 #include "mndUser.h"
+#include "tjson.h"
 
 #define MOUNT_VER_NUMBER   1
 #define MOUNT_RESERVE_SIZE 64
@@ -188,9 +189,244 @@ static int32_t mndSetCreateMountUndoActions(SMnode *pMnode, STrans *pTrans, SDno
   return 0;
 }
 
+#define mountParseInt8(jsonObj, optStr, optObj) \
+  {                                             \
+    tjsonGetStringValue(jsonObj, optStr, tmp);  \
+    if (code < 0) return -1;                    \
+    optObj = (int8_t)atoi(tmp);                 \
+  }
+
+#define mountParseInt16(jsonObj, optStr, optObj) \
+  {                                              \
+    tjsonGetStringValue(jsonObj, optStr, tmp);   \
+    if (code < 0) return -1;                     \
+    optObj = (int16_t)atoi(tmp);                 \
+  }
+
+#define mountParseInt32(jsonObj, optStr, optObj) \
+  {                                              \
+    tjsonGetStringValue(jsonObj, optStr, tmp);   \
+    if (code < 0) return -1;                     \
+    optObj = (int32_t)atoi(tmp);                 \
+  }
+
+#define mountParseUInt32(jsonObj, optStr, optObj) \
+  {                                               \
+    tjsonGetStringValue(jsonObj, optStr, tmp);    \
+    if (code < 0) return -1;                      \
+    optObj = (uint32_t)atoi(tmp);                 \
+  }
+
+#define mountParseInt64(jsonObj, optStr, optObj) \
+  {                                              \
+    tjsonGetStringValue(jsonObj, optStr, tmp);   \
+    if (code < 0) return -1;                     \
+    optObj = taosStr2int64(tmp);                 \
+  }
+
+#define mountParseString(jsonObj, optStr, optObj) \
+  {                                               \
+    tjsonGetStringValue(jsonObj, optStr, optObj); \
+    if (code < 0) return -1;                      \
+  }
+
+int32_t mmdMountParseDbs(SJson *root, SArray *pArray) {
+  char    tmp[256] = {0};
+  int32_t code = 0;
+  SJson  *dbs = tjsonGetObjectItem(root, "dbs");
+  if (dbs == NULL) return -1;
+
+  int32_t num = (int32_t)cJSON_GetArraySize(dbs);
+  for (int32_t i = 0; i < num; i++) {
+    SJson *db = tjsonGetArrayItem(dbs, i);
+    if (db == NULL) return -1;
+
+    SDbObj dbObj = {0};
+    mountParseString(db, "name", dbObj.name);
+    mountParseString(db, "acct", dbObj.acct);
+    mountParseString(db, "createUser", dbObj.createUser);
+    mountParseInt64(db, "createdTime", dbObj.createdTime);
+    mountParseInt64(db, "updateTime", dbObj.updateTime);
+    mountParseInt64(db, "uid", dbObj.uid);
+    mountParseInt32(db, "cfgVersion", dbObj.cfgVersion);
+    mountParseInt32(db, "vgVersion", dbObj.vgVersion);
+    mountParseInt32(db, "numOfVgroups", dbObj.cfg.numOfVgroups);
+    mountParseInt32(db, "numOfStables", dbObj.cfg.numOfStables);
+    mountParseInt32(db, "buffer", dbObj.cfg.buffer);
+    mountParseInt32(db, "pageSize", dbObj.cfg.pageSize);
+    mountParseInt32(db, "pages", dbObj.cfg.pages);
+    mountParseInt32(db, "cacheLastSize", dbObj.cfg.cacheLastSize);
+    mountParseInt32(db, "daysPerFile", dbObj.cfg.daysPerFile);
+    mountParseInt32(db, "daysToKeep0", dbObj.cfg.daysToKeep0);
+    mountParseInt32(db, "daysToKeep1", dbObj.cfg.daysToKeep1);
+    mountParseInt32(db, "daysToKeep2", dbObj.cfg.daysToKeep2);
+    mountParseInt32(db, "minRows", dbObj.cfg.minRows);
+    mountParseInt32(db, "maxRows", dbObj.cfg.maxRows);
+    mountParseInt8(db, "precision", dbObj.cfg.precision);
+    mountParseInt8(db, "compression", dbObj.cfg.compression);
+    mountParseInt8(db, "strict", dbObj.cfg.strict);
+    mountParseInt8(db, "cacheLast", dbObj.cfg.cacheLast);
+    mountParseInt8(db, "hashMethod", dbObj.cfg.hashMethod);
+    mountParseInt16(db, "hashPrefix", dbObj.cfg.hashPrefix);
+    mountParseInt16(db, "hashSuffix", dbObj.cfg.hashSuffix);
+    mountParseInt16(db, "sstTrigger", dbObj.cfg.sstTrigger);
+    mountParseInt32(db, "tsdbPageSize", dbObj.cfg.tsdbPageSize);
+    mountParseInt8(db, "schemaless", dbObj.cfg.schemaless);
+    mountParseInt8(db, "walLevel", dbObj.cfg.walLevel);
+    mountParseInt32(db, "walFsyncPeriod", dbObj.cfg.walFsyncPeriod);
+    mountParseInt32(db, "walRetentionPeriod", dbObj.cfg.walRetentionPeriod);
+    mountParseInt64(db, "walRetentionSize", dbObj.cfg.walRetentionSize);
+    mountParseInt32(db, "walRollPeriod", dbObj.cfg.walRollPeriod);
+    mountParseInt64(db, "walSegmentSize", dbObj.cfg.walSegmentSize);
+    dbObj.cfg.numOfRetensions = 0;
+    dbObj.cfg.replications = 1;
+
+    if (taosArrayPush(pArray, &dbObj) == NULL) return -1;
+  }
+
+  return 0;
+}
+
+int32_t mmdMountParseVgroups(SJson *root, SArray *pArray, int32_t dnodeId) {
+  char    tmp[256] = {0};
+  int32_t code = 0;
+  SJson  *vgroups = tjsonGetObjectItem(root, "vgroups");
+  if (vgroups == NULL) return -1;
+
+  int32_t num = (int32_t)cJSON_GetArraySize(vgroups);
+  for (int32_t i = 0; i < num; i++) {
+    SJson *vgroup = tjsonGetArrayItem(vgroups, i);
+    if (vgroup == NULL) return -1;
+
+    SVgObj vgroupObj = {0};
+    mountParseInt32(vgroup, "vgId", vgroupObj.vgId);
+    mountParseInt64(vgroup, "createdTime", vgroupObj.createdTime);
+    mountParseInt64(vgroup, "updateTime", vgroupObj.updateTime);
+    mountParseInt32(vgroup, "version", vgroupObj.version);
+    mountParseUInt32(vgroup, "hashBegin", vgroupObj.hashBegin);
+    mountParseUInt32(vgroup, "hashEnd", vgroupObj.hashEnd);
+    mountParseString(vgroup, "db", vgroupObj.dbName);
+    mountParseInt64(vgroup, "dbUid", vgroupObj.dbUid);
+    mountParseInt64(vgroup, "replica", vgroupObj.replica);
+    vgroupObj.isTsma = 0;
+    vgroupObj.replica = 1;
+    vgroupObj.vnodeGid[0].dnodeId = dnodeId;
+
+    if (taosArrayPush(pArray, &vgroupObj) == NULL) return -1;
+  }
+
+  return 0;
+}
+
+int32_t mmdMountParseStbs(SJson *root, SArray *pArray) {
+  char    tmp[256] = {0};
+  int32_t code = 0;
+  SJson  *stbs = tjsonGetObjectItem(root, "stbs");
+  if (stbs == NULL) return -1;
+
+  int32_t num = (int32_t)cJSON_GetArraySize(stbs);
+  for (int32_t i = 0; i < num; i++) {
+    SJson *stb = tjsonGetArrayItem(stbs, i);
+    if (stb == NULL) return -1;
+
+    SStbObj stbObj = {0};
+    mountParseString(stb, "name", stbObj.name);
+    mountParseString(stb, "db", stbObj.db);
+    mountParseInt64(stb, "createdTime", stbObj.createdTime);
+    mountParseInt64(stb, "updateTime", stbObj.updateTime);
+    mountParseInt64(stb, "uid", stbObj.uid);
+    mountParseInt64(stb, "dbUid", stbObj.dbUid);
+    mountParseInt32(stb, "tagVer", stbObj.tagVer);
+    mountParseInt32(stb, "colVer", stbObj.colVer);
+    mountParseInt32(stb, "smaVer", stbObj.smaVer);
+    mountParseInt32(stb, "nextColId", stbObj.nextColId);
+    mountParseInt64(stb, "watermark1", stbObj.watermark[0]);
+    mountParseInt64(stb, "watermark2", stbObj.watermark[1]);
+    mountParseInt64(stb, "maxdelay0", stbObj.maxdelay[0]);
+    mountParseInt64(stb, "maxdelay1", stbObj.maxdelay[1]);
+    mountParseInt32(stb, "ttl", stbObj.ttl);
+    mountParseInt32(stb, "numOfColumns", stbObj.numOfColumns);
+    mountParseInt32(stb, "numOfTags", stbObj.numOfTags);
+
+    stbObj.pColumns = taosMemoryCalloc(stbObj.numOfColumns, sizeof(SSchema));
+    stbObj.pTags = taosMemoryCalloc(stbObj.numOfTags, sizeof(SSchema));
+    if (stbObj.pColumns == NULL || stbObj.pTags == NULL) return -1;
+
+    SJson *tags = tjsonGetObjectItem(stb, "tags");
+    if (tags == NULL) return -1;
+    for (int32_t j = 0; j < stbObj.numOfTags; ++j) {
+      SJson  *tag = tjsonGetArrayItem(tags, j);
+      SSchema schema = {0};
+      mountParseInt8(tag, "type", schema.type);
+      mountParseInt8(tag, "flags", schema.flags);
+      mountParseInt16(tag, "colId", schema.colId);
+      mountParseInt32(tag, "bytes", schema.bytes);
+      mountParseString(tag, "name", schema.name);
+      stbObj.pTags[j] = schema;
+    }
+
+    SJson *columns = tjsonGetObjectItem(stb, "columns");
+    if (columns == NULL) return -1;
+    for (int32_t j = 0; j < stbObj.numOfColumns; ++j) {
+      SJson  *column = tjsonGetArrayItem(columns, j);
+      SSchema schema = {0};
+      mountParseInt8(column, "type", schema.type);
+      mountParseInt8(column, "flags", schema.flags);
+      mountParseInt16(column, "colId", schema.colId);
+      mountParseInt32(column, "bytes", schema.bytes);
+      mountParseString(column, "name", schema.name);
+      stbObj.pColumns[j] = schema;
+    }
+
+    stbObj.numOfFuncs = 0;
+    stbObj.ast1Len = 0;
+    stbObj.ast2Len = 0;
+    stbObj.commentLen = 0;
+
+    if (taosArrayPush(pArray, &stbObj) == NULL) return -1;
+  }
+
+  return 0;
+}
+
+int32_t mmdMountCheckClusterId(SMnode *pMnode, SJson *root) {
+  int64_t cluster
+  int32_t code = 0;
+  SJson  *clusters = tjsonGetObjectItem(root, "clusters");
+  if (clusters == NULL) return -1;
+
+  int32_t num = (int32_t)cJSON_GetArraySize(clusters);
+  for (int32_t i = 0; i < num; i++) {
+    SJson *cluster = tjsonGetArrayItem(clusters, i);
+    if (cluster == NULL) return -1;
+
+
+    mountParseInt32(cluster, "vgId", clusterObj.vgId);
+    mountParseInt64(cluster, "createdTime", clusterObj.createdTime);
+    mountParseInt64(cluster, "updateTime", clusterObj.updateTime);
+    mountParseString(cluster, "version", clusterObj.version);
+  }
+
+  return 0;
+}
+
 static int32_t mndCreateMount(SMnode *pMnode, SDnodeObj *pDnode, SCreateMountReq *pCreate, SGetMountInfoRsp *pInfo,
                               SRpcMsg *pReq) {
   int32_t code = -1;
+  SArray *pDbs = taosArrayInit(2, sizeof(SDbObj));
+  SArray *pVgrups = taosArrayInit(2, sizeof(SVgObj));
+  SArray *pStbs = taosArrayInit(4, sizeof(SStbObj));
+  SJson  *root = tjsonParse(json);
+
+  if (root == NULL) {
+    terrno = TSDB_CODE_INVALID_JSON_FORMAT;
+    goto _OVER;
+  }
+
+  if (mmdMountCheckClusterId(pMnode, root) != 0) goto _OVER;
+  if (mmdMountParseDbs(pDbs, root) != 0) goto _OVER;
+  if (mmdMountParseVgroups(pDbs, root, pDnode->id) != 0) goto _OVER;
+  if (mmdMountParseStbs(pDbs, root) != 0) goto _OVER;
 
   SMountObj mountObj = {0};
   tstrncpy(mountObj.name, pCreate->mountName, TSDB_MOUNT_NAME_LEN);
@@ -206,6 +442,16 @@ static int32_t mndCreateMount(SMnode *pMnode, SDnodeObj *pDnode, SCreateMountReq
   mInfo("trans:%d, used to create mount:%s", pTrans->id, pCreate->mountName);
   if (mndTrancCheckConflict(pMnode, pTrans) != 0) goto _OVER;
 
+  // check cluster Id
+
+
+  // check mount path
+
+  // parse json, return dbobj/stbobj/vgojb
+  // add to redo/undo logs
+  // add commint logs
+  // add redo/undo actions
+
   if (mndSetCreateMountRedoLogs(pMnode, pTrans, &mountObj) != 0) goto _OVER;
   if (mndSetCreateMountUndoLogs(pMnode, pTrans, &mountObj) != 0) goto _OVER;
   if (mndSetCreateMountRedoActions(pMnode, pTrans, pDnode, &mountObj) != 0) goto _OVER;
@@ -217,6 +463,11 @@ static int32_t mndCreateMount(SMnode *pMnode, SDnodeObj *pDnode, SCreateMountReq
 
 _OVER:
   mndTransDrop(pTrans);
+
+  if (root != NULL) cJSON_Delete(root);
+  if (pDbs != NULL) taosArrayDestroy(pDbs);
+  if (pStbs != NULL) taosArrayDestroy(pStbs);
+  if (pVgrups != NULL) taosArrayDestroy(pVgrups);
   return code;
 }
 
