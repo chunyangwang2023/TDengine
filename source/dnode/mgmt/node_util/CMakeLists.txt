@@ -9,6 +9,6 @@ target_link_libraries(
     node_util cjson mnode vnode qnode snode wal sync tfs monitor
 )
 
-if(NOT ${BUILD_SLIM})
+if(NOT ${TD_BUILD_SLIM})
   target_link_libraries(node_util taos_static)
 endif()

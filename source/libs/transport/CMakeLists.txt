@@ -1,5 +1,5 @@
 aux_source_directory(src TRANSPORT_SRC)
-IF (${BUILD_SLIM})
+IF (${TD_BUILD_SLIM})
   list(REMOVE_ITEM TRANSPORT_SRC src/thttp.c)
   list(REMOVE_ITEM TRANSPORT_SRC src/trans.c)
   list(REMOVE_ITEM TRANSPORT_SRC src/transCli.c)

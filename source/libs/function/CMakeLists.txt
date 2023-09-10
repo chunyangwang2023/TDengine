@@ -2,7 +2,7 @@ aux_source_directory(src FUNCTION_SRC)
 aux_source_directory(src/detail FUNCTION_SRC_DETAIL)
 list(REMOVE_ITEM FUNCTION_SRC src/udfd.c)
 
-IF(${BUILD_SLIM})
+IF(${TD_BUILD_SLIM})
     list(REMOVE_ITEM FUNCTION_SRC src/tudf.c)
     list(APPEND FUNCTION_SRC src/slim/udfSlim.c)
 ENDIF()
@@ -42,7 +42,7 @@ target_link_libraries(
     PRIVATE stream ${LINK_JEMALLOC}
 )
 
-if(NOT ${BUILD_SLIM})
+if(NOT ${TD_BUILD_SLIM})
 target_link_libraries(function PUBLIC uv_a)
 
 add_executable(runUdf test/runUdf.c)

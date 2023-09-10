@@ -131,12 +131,6 @@ option(
 )
 
 option(
-   BUILD_SLIM
-   "If use slim" 
-   OFF
-)
-
-option(
     BUILD_WITH_NURAFT
     "If build with NuRaft" 
     OFF

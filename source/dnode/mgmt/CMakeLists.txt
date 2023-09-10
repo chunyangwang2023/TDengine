@@ -10,7 +10,7 @@ if(${BUILD_TEST})
   add_subdirectory(test)
 endif()
 
-IF(NOT ${BUILD_SLIM})
+IF(NOT ${TD_BUILD_SLIM})
 
 aux_source_directory(exe EXEC_SRC)
 add_executable(taosd ${EXEC_SRC})
