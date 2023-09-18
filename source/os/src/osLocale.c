@@ -79,9 +79,11 @@ char *taosCharsetReplace(char *charsetstr) {
  * In case that the setLocale failed to be executed, the right charset needs to be set.
  */
 void taosSetSystemLocale(const char *inLocale, const char *inCharSet) {
-#ifndef _TD_SYLIXOS_
-  char *locale = setlocale(LC_CTYPE, inLocale);
+#ifdef _TD_SYLIXOS_
+  return;
 #endif
+
+  char *locale = setlocale(LC_CTYPE, inLocale);
 
   // default locale or user specified locale is not valid, abort launch
   if (inLocale == NULL || strlen(inLocale) == 0) {

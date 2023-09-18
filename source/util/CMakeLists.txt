@@ -1,6 +1,6 @@
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/version.c.in" "${CMAKE_CURRENT_SOURCE_DIR}/src/version.c")
 aux_source_directory(src UTIL_SRC)
-IF (${BUILD_SLIM})
+IF (${TD_BUILD_SLIM})
   list(REMOVE_ITEM UTIL_SRC src/ttimer.c)
   list(APPEND UTIL_SRC src/slim/ttimerSlim.c)
 ENDIF ()

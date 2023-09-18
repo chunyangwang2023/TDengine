@@ -568,6 +568,7 @@ void cfgDumpCfg(SConfig *pCfg, bool tsc, bool dump) {
       if (src[j] == 0) src[j] = ' ';
     }
 
+    memset(name, 0, CFG_NAME_PRINT_LEN + 1);
     tstrncpy(name, pItem->name, CFG_NAME_PRINT_LEN);
     for (int32_t j = 0; j < CFG_NAME_PRINT_LEN; ++j) {
       if (name[j] == 0) name[j] = ' ';

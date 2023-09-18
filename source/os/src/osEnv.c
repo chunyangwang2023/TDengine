@@ -93,6 +93,8 @@ void osUpdate() {
 
 void osCleanup() {}
 
+// #ifdef _TD_SYLIXOS_
+
 bool osLogSpaceAvailable() { return tsLogSpace.size.avail > 0; }
 
 bool osDataSpaceAvailable() { return tsDataSpace.size.avail > 0; }
@@ -104,6 +106,17 @@ bool osLogSpaceSufficient() { return tsLogSpace.size.avail > tsLogSpace.reserved
 bool osDataSpaceSufficient() { return tsDataSpace.size.avail > tsDataSpace.reserved; }
 
 bool osTempSpaceSufficient() { return tsTempSpace.size.avail > tsTempSpace.reserved; }
+
+// #else
+
+// bool osLogSpaceAvailable() { return true; }
+// bool osDataSpaceAvailable() { return true; }
+// bool osTempSpaceAvailable() { return true; }
+// bool osLogSpaceSufficient() { return true; }
+// bool osDataSpaceSufficient() { return true; }
+// bool osTempSpaceSufficient() { return true; }
+
+// #endif 
 
 void osSetTimezone(const char *tz) { taosSetSystemTimezone(tz, tsTimezoneStr, &tsDaylight, &tsTimezone); }
 

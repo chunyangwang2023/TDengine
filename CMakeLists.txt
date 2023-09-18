@@ -14,6 +14,7 @@ SET(TD_COMMUNITY_DIR ${PROJECT_SOURCE_DIR})
 
 set(TD_SUPPORT_DIR "${TD_SOURCE_DIR}/cmake")
 set(TD_CONTRIB_DIR "${TD_SOURCE_DIR}/contrib")
+set(TD_BUILD_SLIM FALSE)
 
 include(${TD_SUPPORT_DIR}/cmake.platform)
 include(${TD_SUPPORT_DIR}/cmake.define)

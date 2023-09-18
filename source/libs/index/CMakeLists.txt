@@ -1,4 +1,4 @@
-if(${BUILD_SLIM})
+if(${TD_BUILD_SLIM})
   aux_source_directory(src/slim INDEX_SRC)
 else()
   aux_source_directory(src INDEX_SRC)

@@ -1,7 +1,6 @@
 aux_source_directory(src CLIENT_SRC)
 
-if(${BUILD_SLIM})
-else()
+IF(NOT ${TD_BUILD_SLIM})
 
 if(TD_WINDOWS)
     add_library(taos SHARED ${CLIENT_SRC} ${CMAKE_CURRENT_SOURCE_DIR}/src/taos.rc.in)
