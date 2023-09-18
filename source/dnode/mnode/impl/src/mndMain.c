@@ -248,7 +248,7 @@ static void *mndThreadFp(void *param) {
   SMnode *pMnode = param;
   int64_t lastTime = 0;
 #if defined(TD_SLIM)
-  setThreadName("tdlite-timer");
+  setThreadName("tdslim-timer");
 #else
   setThreadName("mnode-timer");
 #endif

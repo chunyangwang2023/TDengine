@@ -390,7 +390,8 @@ int32_t mmdMountParseStbs(SJson *root, SArray *pArray) {
 }
 
 int32_t mmdMountCheckClusterId(SMnode *pMnode, SJson *root) {
-  int64_t cluster
+#if 0
+  int64_t cluster;
   int32_t code = 0;
   SJson  *clusters = tjsonGetObjectItem(root, "clusters");
   if (clusters == NULL) return -1;
@@ -406,13 +407,14 @@ int32_t mmdMountCheckClusterId(SMnode *pMnode, SJson *root) {
     mountParseInt64(cluster, "updateTime", clusterObj.updateTime);
     mountParseString(cluster, "version", clusterObj.version);
   }
-
+#endif
   return 0;
 }
 
 static int32_t mndCreateMount(SMnode *pMnode, SDnodeObj *pDnode, SCreateMountReq *pCreate, SGetMountInfoRsp *pInfo,
                               SRpcMsg *pReq) {
   int32_t code = -1;
+#if 0
   SArray *pDbs = taosArrayInit(2, sizeof(SDbObj));
   SArray *pVgrups = taosArrayInit(2, sizeof(SVgObj));
   SArray *pStbs = taosArrayInit(4, sizeof(SStbObj));
@@ -468,6 +470,7 @@ _OVER:
   if (pDbs != NULL) taosArrayDestroy(pDbs);
   if (pStbs != NULL) taosArrayDestroy(pStbs);
   if (pVgrups != NULL) taosArrayDestroy(pVgrups);
+#endif  
   return code;
 }
 

@@ -143,7 +143,7 @@ static void* loop(void* arg) {
   int         ret;
 
 #if defined(TD_SLIM)
-  setThreadName("tdlite-commit");
+  setThreadName("tdslim-commit");
 #else
   setThreadName("vnode-commit");
 #endif
