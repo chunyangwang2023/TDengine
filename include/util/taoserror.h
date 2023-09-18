@@ -777,7 +777,7 @@ int32_t* taosGetErrno();
 // stream
 #define TSDB_CODE_STREAM_TASK_NOT_EXIST          TAOS_DEF_ERROR_CODE(0, 0x4100)
 
-// TDLite
+// TDSlim
 #define TSDB_CODE_TDLITE_IVLD_OPEN_FLAGS         TAOS_DEF_ERROR_CODE(0, 0x5100)
 #define TSDB_CODE_TDLITE_IVLD_OPEN_DIR           TAOS_DEF_ERROR_CODE(0, 0x5101)
 
