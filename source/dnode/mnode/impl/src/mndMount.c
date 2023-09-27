@@ -15,6 +15,7 @@
 
 #define _DEFAULT_SOURCE
 #include "mndMount.h"
+#include "mndCluster.h"
 #include "mndDb.h"
 #include "mndDnode.h"
 #include "mndPrivilege.h"
@@ -22,6 +23,7 @@
 #include "mndStb.h"
 #include "mndTrans.h"
 #include "mndUser.h"
+#include "mndVgroup.h"
 #include "tjson.h"
 
 #define MOUNT_VER_NUMBER   1
@@ -173,19 +175,141 @@ static int32_t mndSetCreateMountUndoLogs(SMnode *pMnode, STrans *pTrans, SMountO
   return 0;
 }
 
-static int32_t mndSetCreateMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMountObj *pMount) {
+SDbObj *mndAcquireDbByUid(SMnode *pMnode, int64_t uid) {
+  SSdb *pSdb = pMnode->pSdb;
+  void *pIter = NULL;
+
+  while (1) {
+    SDbObj *pDb = NULL;
+    pIter = sdbFetch(pSdb, SDB_DB, pIter, (void **)&pDb);
+    if (pIter == NULL) break;
+    if (pDb->uid == uid) return pDb;
+    sdbRelease(pSdb, pDb);
+  }
+
+  return NULL;
+}
+
+SStbObj *mndAcquireStbByUid(SMnode *pMnode, int64_t uid) {
+  SSdb *pSdb = pMnode->pSdb;
+  void *pIter = NULL;
+
+  while (1) {
+    SStbObj *pStb = NULL;
+    pIter = sdbFetch(pSdb, SDB_STB, pIter, (void **)&pStb);
+    if (pIter == NULL) break;
+    if (pStb->uid == uid) return pStb;
+    sdbRelease(pSdb, pStb);
+  }
+
+  return NULL;
+}
+
+static int32_t mndSetCreateMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMountObj *pMount, SArray *pDbArray,
+                                           SArray *pVgroupArray, SArray *pStbArray) {
   SSdbRaw *pCommitRaw = mndMountActionEncode(pMount);
   if (pCommitRaw == NULL) return -1;
   if (mndTransAppendCommitlog(pTrans, pCommitRaw) != 0) return -1;
   if (sdbSetRawStatus(pCommitRaw, SDB_STATUS_READY) != 0) return -1;
-  return 0;
-}
 
-static int32_t mndSetCreateMountRedoActions(SMnode *pMnode, STrans *pTrans, SDnodeObj *pDnode, SMountObj *pMount) {
-  return 0;
-}
+  for (int32_t i = 0; i < (int32_t)taosArrayGetSize(pDbArray); ++i) {
+    SDbObj *pDb = taosArrayGet(pDbArray, i);
+    char    dbname[TSDB_DB_FNAME_LEN] = {0};
+    snprintf(dbname, TSDB_DB_FNAME_LEN - 1, "%s_%s", pDb->name, pMount->name);
+    tstrncpy(pDb->name, dbname, TSDB_DB_FNAME_LEN);
 
-static int32_t mndSetCreateMountUndoActions(SMnode *pMnode, STrans *pTrans, SDnodeObj *pDnode, SMountObj *pMount) {
+    SDbObj *pSameNameDb = mndAcquireDb(pMnode, dbname);
+    if (pSameNameDb != NULL) {
+      mError("db:%s, failed to mount since its already exist", pSameNameDb->name);
+      mndReleaseDb(pMnode, pSameNameDb);
+      return -1;
+    }
+
+    SDbObj *pSameUidDb = mndAcquireDbByUid(pMnode, pDb->uid);
+    if (pSameUidDb != NULL) {
+      mError("db:%s, failed to mount since uid:%" PRId64 " already exist in db:%s", pDb->name, pDb->uid,
+             pSameUidDb->name);
+      mndReleaseDb(pMnode, pSameUidDb);
+      return -1;
+    }
+
+    SSdbRaw *pDbRaw = mndDbActionEncode(pDb);
+    if (pDbRaw == NULL) return -1;
+    if (mndTransAppendCommitlog(pTrans, pDbRaw) != 0) return -1;
+    if (sdbSetRawStatus(pDbRaw, SDB_STATUS_READY) != 0) return -1;
+
+    SVgObj *pVgroups = NULL;
+    if (mndAllocVgroup(pMnode, pDb, &pVgroups) != 0) {
+      mError("db:%s, failed to create since %s", pDb->name, terrstr());
+      return -1;
+    }
+
+    for (int32_t v = 0; v < pDb->cfg.numOfVgroups; ++v) {
+      SSdbRaw *pVgRaw = mndVgroupActionEncode(pVgroups + v);
+      if (pVgRaw == NULL) return -1;
+      if (mndTransAppendCommitlog(pTrans, pVgRaw) != 0) {
+        taosMemoryFree(pVgroups);
+        return -1;
+      }
+      if (sdbSetRawStatus(pVgRaw, SDB_STATUS_READY) != 0) {
+        taosMemoryFree(pVgroups);
+        return -1;
+      }
+    }
+
+    for (int32_t vg = 0; vg < pDb->cfg.numOfVgroups; ++vg) {
+      SVgObj *pVgroup = pVgroups + vg;
+
+      for (int32_t vn = 0; vn < pVgroup->replica; ++vn) {
+        SVnodeGid *pVgid = pVgroup->vnodeGid + vn;
+        if (mndAddCreateVnodeAction(pMnode, pTrans, pDb, pVgroup, pVgid) != 0) {
+          taosMemoryFree(pVgroups);
+          return -1;
+        }
+      }
+    }
+
+    for (int32_t vg = 0; vg < pDb->cfg.numOfVgroups; ++vg) {
+      SVgObj *pVgroup = pVgroups + vg;
+
+      for (int32_t vn = 0; vn < pVgroup->replica; ++vn) {
+        SVnodeGid *pVgid = pVgroup->vnodeGid + vn;
+        if (mndAddDropVnodeAction(pMnode, pTrans, pDb, pVgroup, pVgid, false) != 0) {
+          taosMemoryFree(pVgroups);
+          return -1;
+        }
+      }
+    }
+
+    for (int32_t stb = 0; stb < (int32_t)taosArrayGetSize(pStbArray); ++stb) {
+      SStbObj *pStb = taosArrayGet(pStbArray, i);
+      tstrncpy(pStb->db, dbname, TSDB_DB_FNAME_LEN);
+      pStb->dbUid = pDb->uid;
+
+      SStbObj *pSameNameStb = mndAcquireStb(pMnode, pStb->name);
+      if (pSameNameStb != NULL) {
+        mError("db:%s, failed to mount since stb:%s already exist", pDb->name, pSameNameStb->name);
+        mndReleaseStb(pMnode, pSameNameStb);
+        return -1;
+      }
+
+      SStbObj *pSameUidStb = mndAcquireStbByUid(pMnode, pStb->uid);
+      if (pSameUidStb != NULL) {
+        mError("db:%s, failed to mount since stb:%s uid:%" PRId64 " already exist in stb:%s", pDb->name, pStb->name,
+               pStb->uid, pSameUidStb->name);
+        mndReleaseStb(pMnode, pSameNameStb);
+        return -1;
+      }
+
+      SSdbRaw *pStbRaw = mndStbActionEncode(pStb);
+      if (pStbRaw == NULL) return -1;
+      if (mndTransAppendCommitlog(pTrans, pStbRaw) != 0) return -1;
+      if (sdbSetRawStatus(pStbRaw, SDB_STATUS_READY) != 0) return -1;
+    }
+
+    taosMemoryFree(pVgroups);
+  }
+
   return 0;
 }
 
@@ -264,6 +388,7 @@ int32_t mmdMountParseDbs(SJson *root, SArray *pArray) {
     mountParseInt32(db, "maxRows", dbObj.cfg.maxRows);
     mountParseInt8(db, "precision", dbObj.cfg.precision);
     mountParseInt8(db, "compression", dbObj.cfg.compression);
+    mountParseInt8(db, "replications", dbObj.cfg.replications);
     mountParseInt8(db, "strict", dbObj.cfg.strict);
     mountParseInt8(db, "cacheLast", dbObj.cfg.cacheLast);
     mountParseInt8(db, "hashMethod", dbObj.cfg.hashMethod);
@@ -279,7 +404,11 @@ int32_t mmdMountParseDbs(SJson *root, SArray *pArray) {
     mountParseInt32(db, "walRollPeriod", dbObj.cfg.walRollPeriod);
     mountParseInt64(db, "walSegmentSize", dbObj.cfg.walSegmentSize);
     dbObj.cfg.numOfRetensions = 0;
-    dbObj.cfg.replications = 1;
+
+    if (dbObj.cfg.replications != 1) {
+      terrno = TSDB_CODE_MND_MOUNT_INVALID_REPLICA;
+      return -1;
+    }
 
     if (taosArrayPush(pArray, &dbObj) == NULL) return -1;
   }
@@ -389,8 +518,9 @@ int32_t mmdMountParseStbs(SJson *root, SArray *pArray) {
   return 0;
 }
 
-int32_t mmdMountCheckClusterId(SMnode *pMnode, SJson *root) {
-  int64_t cluster
+int32_t mmdMountParseCluster(SJson *root, SClusterObj *clusterObj) {
+  char    tmp[256] = {0};
+  int64_t cluster = 0;
   int32_t code = 0;
   SJson  *clusters = tjsonGetObjectItem(root, "clusters");
   if (clusters == NULL) return -1;
@@ -400,11 +530,10 @@ int32_t mmdMountCheckClusterId(SMnode *pMnode, SJson *root) {
     SJson *cluster = tjsonGetArrayItem(clusters, i);
     if (cluster == NULL) return -1;
 
-
-    mountParseInt32(cluster, "vgId", clusterObj.vgId);
-    mountParseInt64(cluster, "createdTime", clusterObj.createdTime);
-    mountParseInt64(cluster, "updateTime", clusterObj.updateTime);
-    mountParseString(cluster, "version", clusterObj.version);
+    mountParseInt32(cluster, "id", clusterObj->id);
+    mountParseInt64(cluster, "createdTime", clusterObj->createdTime);
+    mountParseInt64(cluster, "updateTime", clusterObj->updateTime);
+    mountParseString(cluster, "name", clusterObj->name);
   }
 
   return 0;
@@ -412,21 +541,32 @@ int32_t mmdMountCheckClusterId(SMnode *pMnode, SJson *root) {
 
 static int32_t mndCreateMount(SMnode *pMnode, SDnodeObj *pDnode, SCreateMountReq *pCreate, SGetMountInfoRsp *pInfo,
                               SRpcMsg *pReq) {
-  int32_t code = -1;
-  SArray *pDbs = taosArrayInit(2, sizeof(SDbObj));
-  SArray *pVgrups = taosArrayInit(2, sizeof(SVgObj));
-  SArray *pStbs = taosArrayInit(4, sizeof(SStbObj));
-  SJson  *root = tjsonParse(json);
+  int32_t     code = -1;
+  SClusterObj clusterObj = {0};
+  SArray     *pDbs = taosArrayInit(2, sizeof(SDbObj));
+  SArray     *pVgrups = taosArrayInit(2, sizeof(SVgObj));
+  SArray     *pStbs = taosArrayInit(4, sizeof(SStbObj));
+  SJson      *root = tjsonParse(pInfo->jsonStr);
 
   if (root == NULL) {
     terrno = TSDB_CODE_INVALID_JSON_FORMAT;
     goto _OVER;
   }
 
-  if (mmdMountCheckClusterId(pMnode, root) != 0) goto _OVER;
-  if (mmdMountParseDbs(pDbs, root) != 0) goto _OVER;
-  if (mmdMountParseVgroups(pDbs, root, pDnode->id) != 0) goto _OVER;
-  if (mmdMountParseStbs(pDbs, root) != 0) goto _OVER;
+  if (mmdMountParseCluster(root, &clusterObj) != 0) goto _OVER;
+  if (mmdMountParseDbs(root, pDbs) != 0) goto _OVER;
+  if (mmdMountParseVgroups(root, pVgrups, pDnode->id) != 0) goto _OVER;
+  if (mmdMountParseStbs(root, pStbs) != 0) goto _OVER;
+
+  if (mndGetClusterId(pMnode) == clusterObj.id) {
+    terrno = TSDB_CODE_MND_MOUNT_SAME_CULSTER;
+    goto _OVER;
+  }
+
+  if (taosArrayGetSize(pDbs) <= 0) {
+    terrno = TSDB_CODE_MND_MOUNT_DB_NOT_EXIST;
+    goto _OVER;
+  }
 
   SMountObj mountObj = {0};
   tstrncpy(mountObj.name, pCreate->mountName, TSDB_MOUNT_NAME_LEN);
@@ -442,21 +582,9 @@ static int32_t mndCreateMount(SMnode *pMnode, SDnodeObj *pDnode, SCreateMountReq
   mInfo("trans:%d, used to create mount:%s", pTrans->id, pCreate->mountName);
   if (mndTrancCheckConflict(pMnode, pTrans) != 0) goto _OVER;
 
-  // check cluster Id
-
-
-  // check mount path
-
-  // parse json, return dbobj/stbobj/vgojb
-  // add to redo/undo logs
-  // add commint logs
-  // add redo/undo actions
-
   if (mndSetCreateMountRedoLogs(pMnode, pTrans, &mountObj) != 0) goto _OVER;
   if (mndSetCreateMountUndoLogs(pMnode, pTrans, &mountObj) != 0) goto _OVER;
-  if (mndSetCreateMountRedoActions(pMnode, pTrans, pDnode, &mountObj) != 0) goto _OVER;
-  if (mndSetCreateMountUndoActions(pMnode, pTrans, pDnode, &mountObj) != 0) goto _OVER;
-  if (mndSetCreateMountCommitLogs(pMnode, pTrans, &mountObj) != 0) goto _OVER;
+  if (mndSetCreateMountCommitLogs(pMnode, pTrans, &mountObj, pDbs, pVgrups, pStbs) != 0) goto _OVER;
   if (mndTransPrepare(pMnode, pTrans) != 0) goto _OVER;
 
   code = 0;
@@ -468,6 +596,7 @@ _OVER:
   if (pDbs != NULL) taosArrayDestroy(pDbs);
   if (pStbs != NULL) taosArrayDestroy(pStbs);
   if (pVgrups != NULL) taosArrayDestroy(pVgrups);
+
   return code;
 }
 
