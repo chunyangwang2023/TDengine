@@ -290,12 +290,13 @@ typedef struct {
 } SUserObj;
 
 typedef struct {
-  char    name[TSDB_MOUNT_NAME_LEN];
-  char    path[TSDB_MOUNT_PATH_LEN];
-  int32_t dnodeId;
-  int64_t createdTime;
-  int64_t updateTime;
-  SArray* pDbs;  // SDbObj
+  char     name[TSDB_MOUNT_NAME_LEN];
+  char     path[TSDB_MOUNT_PATH_LEN];
+  int32_t  dnodeId;
+  int64_t  createdTime;
+  int64_t  updateTime;
+  int32_t  dbSize;
+  int64_t* dbUids;
 } SMountObj;
 
 typedef struct {

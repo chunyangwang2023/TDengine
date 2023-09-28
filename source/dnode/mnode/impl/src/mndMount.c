@@ -72,6 +72,10 @@ SSdbRaw *mndMountActionEncode(SMountObj *pMount) {
   SDB_SET_INT32(pRaw, dataPos, pMount->dnodeId, _OVER)
   SDB_SET_INT64(pRaw, dataPos, pMount->createdTime, _OVER)
   SDB_SET_INT64(pRaw, dataPos, pMount->updateTime, _OVER)
+  SDB_SET_INT32(pRaw, dataPos, pMount->dbSize, _OVER)
+  for (int32_t db = 0; db < pMount->dbSize; ++db) {
+    SDB_SET_INT64(pRaw, dataPos, pMount->dbUids[db], _OVER)
+  }
 
   SDB_SET_RESERVE(pRaw, dataPos, MOUNT_RESERVE_SIZE, _OVER)
   SDB_SET_DATALEN(pRaw, dataPos, _OVER)
@@ -114,6 +118,12 @@ static SSdbRow *mndMountActionDecode(SSdbRaw *pRaw) {
   SDB_GET_INT32(pRaw, dataPos, &pMount->dnodeId, _OVER)
   SDB_GET_INT64(pRaw, dataPos, &pMount->createdTime, _OVER)
   SDB_GET_INT64(pRaw, dataPos, &pMount->updateTime, _OVER)
+  SDB_GET_INT32(pRaw, dataPos, &pMount->dbSize, _OVER)
+  pMount->dbUids = taosMemoryCalloc(pMount->dbSize, sizeof(int64_t));
+  for (int32_t db = 0; db < pMount->dbSize; ++db) {
+    SDB_GET_INT64(pRaw, dataPos, &pMount->dbUids[db], _OVER)
+  }
+
   SDB_GET_RESERVE(pRaw, dataPos, MOUNT_RESERVE_SIZE, _OVER)
 
   terrno = 0;
@@ -136,6 +146,7 @@ static int32_t mndMountActionInsert(SSdb *pSdb, SMountObj *pMount) {
 
 static int32_t mndMountActionDelete(SSdb *pSdb, SMountObj *pMount) {
   mTrace("mount:%s, perform delete action, row:%p", pMount->name, pMount);
+  taosMemoryFreeClear(pMount->dbUids);
   return 0;
 }
 
@@ -258,7 +269,7 @@ int32_t mndAddMountVnodeAction(SMnode *pMnode, STrans *pTrans, SMountObj *pMount
 }
 
 int32_t mndAddUnMountVnodeAction(SMnode *pMnode, STrans *pTrans, SMountObj *pMount, SDbObj *pDb, SVgObj *pVgroup,
-                              SVnodeGid *pVgid, bool isRedo) {
+                                 SVnodeGid *pVgid, bool isRedo) {
   STransAction action = {0};
 
   SDnodeObj *pDnode = mndAcquireDnode(pMnode, pVgid->dnodeId);
@@ -313,6 +324,7 @@ static int32_t mndSetCreateMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMoun
   if (mndTransAppendCommitlog(pTrans, pCommitRaw) != 0) return -1;
   if (sdbSetRawStatus(pCommitRaw, SDB_STATUS_READY) != 0) return -1;
 
+#if 0
   for (int32_t i = 0; i < (int32_t)taosArrayGetSize(pDbArray); ++i) {
     SDbObj *pDb = taosArrayGet(pDbArray, i);
     char    dbname[TSDB_DB_FNAME_LEN] = {0};
@@ -421,7 +433,7 @@ static int32_t mndSetCreateMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMoun
 
     taosMemoryFree(pVgroups);
   }
-
+#endif
   return 0;
 }
 
@@ -642,7 +654,7 @@ int32_t mmdMountParseCluster(SJson *root, SClusterObj *clusterObj) {
     SJson *cluster = tjsonGetArrayItem(clusters, i);
     if (cluster == NULL) return -1;
 
-    mountParseInt32(cluster, "id", clusterObj->id);
+    mountParseInt64(cluster, "id", clusterObj->id);
     mountParseInt64(cluster, "createdTime", clusterObj->createdTime);
     mountParseInt64(cluster, "updateTime", clusterObj->updateTime);
     mountParseString(cluster, "name", clusterObj->name);
@@ -686,6 +698,14 @@ static int32_t mndCreateMount(SMnode *pMnode, SDnodeObj *pDnode, SCreateMountReq
   mountObj.dnodeId = pCreate->mountDnodeId;
   mountObj.createdTime = taosGetTimestampMs();
   mountObj.updateTime = mountObj.createdTime;
+  mountObj.dbSize = (int32_t)taosArrayGetSize(pDbs);
+  if (mountObj.dbSize > 0) {
+    mountObj.dbUids = taosMemoryCalloc(mountObj.dbSize, sizeof(int64_t));
+    for (int32_t db = 0; db < mountObj.dbSize; ++db) {
+      SDbObj *pDb = taosArrayGet(pDbs, db);
+      mountObj.dbUids[db] = pDb->uid;
+    }
+  }
 
   STrans *pTrans = mndTransCreate(pMnode, TRN_POLICY_ROLLBACK, TRN_CONFLICT_GLOBAL, pReq, "create-mount");
   if (pTrans == NULL) goto _OVER;
@@ -708,6 +728,7 @@ _OVER:
   if (pDbs != NULL) taosArrayDestroy(pDbs);
   if (pStbs != NULL) taosArrayDestroy(pStbs);
   if (pVgrups != NULL) taosArrayDestroy(pVgrups);
+  taosMemoryFreeClear(mountObj.dbUids);
 
   return code;
 }
@@ -839,13 +860,24 @@ static int32_t mndSetDropMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMountO
   if (mndTransAppendCommitlog(pTrans, pCommitRaw) != 0) return -1;
   if (sdbSetRawStatus(pCommitRaw, SDB_STATUS_DROPPED) != 0) return -1;
 
-  for (int32_t db = 0; db < (int32_t)taosArrayGetSize(pMount->pDbs); ++db) {
-    SDbObj *pDb = taosArrayGet(pMount->pDbs, db);
+  for (int32_t db = 0; db < pMount->dbSize; ++db) {
+    int64_t dbUid = pMount->dbUids[db];
+    SDbObj *pDb = mndAcquireDbByUid(pMnode, dbUid);
 
     SSdbRaw *pDbRaw = mndDbActionEncode(pDb);
-    if (pDbRaw == NULL) return -1;
-    if (mndTransAppendCommitlog(pTrans, pDbRaw) != 0) return -1;
-    if (sdbSetRawStatus(pDbRaw, SDB_STATUS_DROPPED) != 0) return -1;
+    if (pDbRaw == NULL) {
+      mndReleaseDb(pMnode, pDb);
+      return -1;
+    }
+    if (mndTransAppendCommitlog(pTrans, pDbRaw) != 0) {
+      mndReleaseDb(pMnode, pDb);
+      return -1;
+    }
+    if (sdbSetRawStatus(pDbRaw, SDB_STATUS_DROPPED) != 0) {
+      mndReleaseDb(pMnode, pDb);
+      return -1;
+    }
+    mndReleaseDb(pMnode, pDb);
 
     SSdb *pSdb = pMnode->pSdb;
     void *pIter = NULL;
@@ -854,7 +886,7 @@ static int32_t mndSetDropMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMountO
       pIter = sdbFetch(pSdb, SDB_VGROUP, pIter, (void **)&pVgroup);
       if (pIter == NULL) break;
 
-      if (pVgroup->dbUid == pDb->uid) {
+      if (pVgroup->dbUid == dbUid) {
         SSdbRaw *pVgRaw = mndVgroupActionEncode(pVgroup);
         if (pVgRaw == NULL || mndTransAppendCommitlog(pTrans, pVgRaw) != 0) {
           sdbCancelFetch(pSdb, pIter);
@@ -872,7 +904,7 @@ static int32_t mndSetDropMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMountO
       pIter = sdbFetch(pSdb, SDB_STB, pIter, (void **)&pStb);
       if (pIter == NULL) break;
 
-      if (pStb->dbUid == pDb->uid) {
+      if (pStb->dbUid == dbUid) {
         SSdbRaw *pStbRaw = mndStbActionEncode(pStb);
         if (pStbRaw == NULL || mndTransAppendCommitlog(pTrans, pStbRaw) != 0) {
           sdbCancelFetch(pSdb, pIter);
@@ -892,8 +924,9 @@ static int32_t mndSetDropMountRedoActions(SMnode *pMnode, STrans *pTrans, SDnode
   SSdb *pSdb = pMnode->pSdb;
   void *pIter = NULL;
 
-  for (int32_t db = 0; db < (int32_t)taosArrayGetSize(pMount->pDbs); ++db) {
-    SDbObj *pDb = taosArrayGet(pMount->pDbs, db);
+  for (int32_t db = 0; db < pMount->dbSize; ++db) {
+    int64_t dbUid = pMount->dbUids[db];
+    SDbObj *pDb = mndAcquireDbByUid(pMnode, dbUid);
 
     while (1) {
       SVgObj *pVgroup = NULL;
@@ -905,11 +938,13 @@ static int32_t mndSetDropMountRedoActions(SMnode *pMnode, STrans *pTrans, SDnode
           SVnodeGid *pVgid = pVgroup->vnodeGid + vn;
           if (mndAddUnMountVnodeAction(pMnode, pTrans, pMount, pDb, pVgroup, pVgid, true) != 0) {
             sdbRelease(pSdb, pVgroup);
+            sdbRelease(pSdb, pDb);
             return -1;
           }
 
           if (mndAddDropVnodeAction(pMnode, pTrans, pDb, pVgroup, pVgid, true) != 0) {
             sdbRelease(pSdb, pVgroup);
+            sdbRelease(pSdb, pDb);
             return -1;
           }
         }
@@ -917,6 +952,7 @@ static int32_t mndSetDropMountRedoActions(SMnode *pMnode, STrans *pTrans, SDnode
 
       sdbRelease(pSdb, pVgroup);
     }
+    sdbRelease(pSdb, pDb);
   }
 
   return 0;
