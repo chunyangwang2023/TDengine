@@ -165,6 +165,23 @@ SMountObj *mndAcquireMount(SMnode *pMnode, const char *mountName) {
   return pObj;
 }
 
+SMountObj *mndAcquireMountByPathAndDnode(SMnode *pMnode, const char *mountPath, int32_t mountDnodeId) {
+  SSdb *pSdb = pMnode->pSdb;
+  void *pIter = NULL;
+
+  while (1) {
+    SMountObj *pMount = NULL;
+    pIter = sdbFetch(pSdb, SDB_MOUNT, pIter, (void **)&pMount);
+    if (pIter == NULL) break;
+    if (pMount->dnodeId == mountDnodeId && strcmp(pMount->path, mountPath) == 0) {
+      return pMount;
+    }
+    sdbRelease(pSdb, pMount);
+  }
+
+  return NULL;
+}
+
 void mndReleaseMount(SMnode *pMnode, SMountObj *pMount) {
   SSdb *pSdb = pMnode->pSdb;
   sdbRelease(pSdb, pMount);
@@ -699,12 +716,10 @@ static int32_t mndCreateMount(SMnode *pMnode, SDnodeObj *pDnode, SCreateMountReq
   mountObj.createdTime = taosGetTimestampMs();
   mountObj.updateTime = mountObj.createdTime;
   mountObj.dbSize = (int32_t)taosArrayGetSize(pDbs);
-  if (mountObj.dbSize > 0) {
-    mountObj.dbUids = taosMemoryCalloc(mountObj.dbSize, sizeof(int64_t));
-    for (int32_t db = 0; db < mountObj.dbSize; ++db) {
-      SDbObj *pDb = taosArrayGet(pDbs, db);
-      mountObj.dbUids[db] = pDb->uid;
-    }
+  mountObj.dbUids = taosMemoryCalloc(mountObj.dbSize, sizeof(int64_t));
+  for (int32_t db = 0; db < mountObj.dbSize; ++db) {
+    SDbObj *pDb = taosArrayGet(pDbs, db);
+    mountObj.dbUids[db] = pDb->uid;
   }
 
   STrans *pTrans = mndTransCreate(pMnode, TRN_POLICY_ROLLBACK, TRN_CONFLICT_GLOBAL, pReq, "create-mount");
@@ -800,7 +815,13 @@ static int32_t mndProcessCreateMountReq(SRpcMsg *pReq) {
 
   pMount = mndAcquireMount(pMnode, createReq.mountName);
   if (pMount != NULL) {
-    terrno = TSDB_CODE_MND_MOUNT_ALREADY_EXIST;
+    terrno = TSDB_CODE_MND_MOUNT_NAME_ALREADY_EXIST;
+    goto _OVER;
+  }
+
+  pMount = mndAcquireMountByPathAndDnode(pMnode, createReq.mountPath, createReq.mountDnodeId);
+  if (pMount != NULL) {
+    terrno = TSDB_CODE_MND_MOUNT_PATH_ALREADY_EXIST;
     goto _OVER;
   }
 
@@ -863,6 +884,7 @@ static int32_t mndSetDropMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMountO
   for (int32_t db = 0; db < pMount->dbSize; ++db) {
     int64_t dbUid = pMount->dbUids[db];
     SDbObj *pDb = mndAcquireDbByUid(pMnode, dbUid);
+    if (pDb == NULL) continue;
 
     SSdbRaw *pDbRaw = mndDbActionEncode(pDb);
     if (pDbRaw == NULL) {
@@ -927,6 +949,7 @@ static int32_t mndSetDropMountRedoActions(SMnode *pMnode, STrans *pTrans, SDnode
   for (int32_t db = 0; db < pMount->dbSize; ++db) {
     int64_t dbUid = pMount->dbUids[db];
     SDbObj *pDb = mndAcquireDbByUid(pMnode, dbUid);
+    if (pDb == NULL) continue;
 
     while (1) {
       SVgObj *pVgroup = NULL;
