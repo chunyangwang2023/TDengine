@@ -205,6 +205,107 @@ SStbObj *mndAcquireStbByUid(SMnode *pMnode, int64_t uid) {
   return NULL;
 }
 
+void *mndBuildMountVnodeReq(SMnode *pMnode, SMountObj *pMount, SDnodeObj *pDnode, SDbObj *pDb, SVgObj *pVgroup,
+                            int32_t mountVgId, int32_t *pContLen) {
+  SMountVnodeReq mountReq = {0};
+  mountReq.vgId = pVgroup->vgId;
+  mountReq.dnodeId = pDnode->id;
+  mountReq.mountVgId = mountVgId;
+  tstrncpy(mountReq.mountPath, pMount->path, sizeof(mountReq.mountPath));
+  mountReq.dbUid = pDb->uid;
+  tstrncpy(mountReq.mountPath, pDb->name, sizeof(mountReq.db));
+
+  int32_t contLen = tSerializeSMountVnodeReq(NULL, 0, &mountReq);
+  if (contLen < 0) {
+    terrno = TSDB_CODE_OUT_OF_MEMORY;
+    return NULL;
+  }
+
+  void *pReq = taosMemoryMalloc(contLen);
+  if (pReq == NULL) {
+    terrno = TSDB_CODE_OUT_OF_MEMORY;
+    return NULL;
+  }
+
+  tSerializeSMountVnodeReq(pReq, contLen, &mountReq);
+  *pContLen = contLen;
+  return pReq;
+}
+
+int32_t mndAddMountVnodeAction(SMnode *pMnode, STrans *pTrans, SMountObj *pMount, SDbObj *pDb, SVgObj *pVgroup,
+                               SVnodeGid *pVgid, SVgObj *pMountVgroup) {
+  STransAction action = {0};
+
+  SDnodeObj *pDnode = mndAcquireDnode(pMnode, pVgid->dnodeId);
+  if (pDnode == NULL) return -1;
+  action.epSet = mndGetDnodeEpset(pDnode);
+  mndReleaseDnode(pMnode, pDnode);
+
+  int32_t contLen = 0;
+  void   *pReq = mndBuildMountVnodeReq(pMnode, pMount, pDnode, pDb, pVgroup, pMountVgroup->vgId, &contLen);
+  if (pReq == NULL) return -1;
+
+  action.pCont = pReq;
+  action.contLen = contLen;
+  action.msgType = TDMT_DND_MOUNT_VNODE;
+
+  if (mndTransAppendRedoAction(pTrans, &action) != 0) {
+    taosMemoryFree(pReq);
+    return -1;
+  }
+
+  return 0;
+}
+
+int32_t mndAddUnMountVnodeAction(SMnode *pMnode, STrans *pTrans, SMountObj *pMount, SDbObj *pDb, SVgObj *pVgroup,
+                              SVnodeGid *pVgid, bool isRedo) {
+  STransAction action = {0};
+
+  SDnodeObj *pDnode = mndAcquireDnode(pMnode, pVgid->dnodeId);
+  if (pDnode == NULL) return -1;
+  action.epSet = mndGetDnodeEpset(pDnode);
+  mndReleaseDnode(pMnode, pDnode);
+
+  int32_t contLen = 0;
+  void   *pReq = mndBuildMountVnodeReq(pMnode, pMount, pDnode, pDb, pVgroup, -1, &contLen);
+  if (pReq == NULL) return -1;
+
+  action.pCont = pReq;
+  action.contLen = contLen;
+  action.msgType = TDMT_DND_UNMOUNT_VNODE;
+  action.acceptableCode = TSDB_CODE_VND_NOT_EXIST;
+
+  if (isRedo) {
+    if (mndTransAppendRedoAction(pTrans, &action) != 0) {
+      taosMemoryFree(pReq);
+      return -1;
+    }
+  } else {
+    if (mndTransAppendUndoAction(pTrans, &action) != 0) {
+      taosMemoryFree(pReq);
+      return -1;
+    }
+  }
+
+  return 0;
+}
+
+static SVgObj *mndGetMountVgroupByDbAndIndex(SArray *pVgroupArray, SDbObj *pDb, int32_t indexOfDbVgroup) {
+  int32_t localIndex = 0;
+  for (int32_t vg = 0; vg < (int32_t)taosArrayGetSize(pVgroupArray); ++vg) {
+    SVgObj *pVgroup = taosArrayGet(pVgroupArray, vg);
+    if (pDb->uid == pVgroup->dbUid) {
+      if (localIndex == indexOfDbVgroup) {
+        return pVgroup;
+      } else {
+        localIndex++;
+      }
+    }
+  }
+
+  return NULL;
+}
+
 static int32_t mndSetCreateMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMountObj *pMount, SArray *pDbArray,
                                            SArray *pVgroupArray, SArray *pStbArray) {
   SSdbRaw *pCommitRaw = mndMountActionEncode(pMount);
@@ -266,6 +367,12 @@ static int32_t mndSetCreateMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMoun
           taosMemoryFree(pVgroups);
           return -1;
         }
+
+        SVgObj *pMountVgroup = mndGetMountVgroupByDbAndIndex(pVgroupArray, pDb, vn);
+        if (mndAddMountVnodeAction(pMnode, pTrans, pMount, pDb, pVgroup, pVgid, pMountVgroup) != 0) {
+          taosMemoryFree(pVgroups);
+          return -1;
+        }
       }
     }
 
@@ -274,6 +381,11 @@ static int32_t mndSetCreateMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMoun
 
       for (int32_t vn = 0; vn < pVgroup->replica; ++vn) {
         SVnodeGid *pVgid = pVgroup->vnodeGid + vn;
+        if (mndAddUnMountVnodeAction(pMnode, pTrans, pMount, pDb, pVgroup, pVgid, false) != 0) {
+          taosMemoryFree(pVgroups);
+          return -1;
+        }
+
         if (mndAddDropVnodeAction(pMnode, pTrans, pDb, pVgroup, pVgid, false) != 0) {
           taosMemoryFree(pVgroups);
           return -1;
@@ -726,10 +838,87 @@ static int32_t mndSetDropMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMountO
   if (pCommitRaw == NULL) return -1;
   if (mndTransAppendCommitlog(pTrans, pCommitRaw) != 0) return -1;
   if (sdbSetRawStatus(pCommitRaw, SDB_STATUS_DROPPED) != 0) return -1;
+
+  for (int32_t db = 0; db < (int32_t)taosArrayGetSize(pMount->pDbs); ++db) {
+    SDbObj *pDb = taosArrayGet(pMount->pDbs, db);
+
+    SSdbRaw *pDbRaw = mndDbActionEncode(pDb);
+    if (pDbRaw == NULL) return -1;
+    if (mndTransAppendCommitlog(pTrans, pDbRaw) != 0) return -1;
+    if (sdbSetRawStatus(pDbRaw, SDB_STATUS_DROPPED) != 0) return -1;
+
+    SSdb *pSdb = pMnode->pSdb;
+    void *pIter = NULL;
+    while (1) {
+      SVgObj *pVgroup = NULL;
+      pIter = sdbFetch(pSdb, SDB_VGROUP, pIter, (void **)&pVgroup);
+      if (pIter == NULL) break;
+
+      if (pVgroup->dbUid == pDb->uid) {
+        SSdbRaw *pVgRaw = mndVgroupActionEncode(pVgroup);
+        if (pVgRaw == NULL || mndTransAppendCommitlog(pTrans, pVgRaw) != 0) {
+          sdbCancelFetch(pSdb, pIter);
+          sdbRelease(pSdb, pVgroup);
+          return -1;
+        }
+        (void)sdbSetRawStatus(pVgRaw, SDB_STATUS_DROPPED);
+      }
+
+      sdbRelease(pSdb, pVgroup);
+    }
+
+    while (1) {
+      SStbObj *pStb = NULL;
+      pIter = sdbFetch(pSdb, SDB_STB, pIter, (void **)&pStb);
+      if (pIter == NULL) break;
+
+      if (pStb->dbUid == pDb->uid) {
+        SSdbRaw *pStbRaw = mndStbActionEncode(pStb);
+        if (pStbRaw == NULL || mndTransAppendCommitlog(pTrans, pStbRaw) != 0) {
+          sdbCancelFetch(pSdb, pIter);
+          sdbRelease(pSdb, pStbRaw);
+          return -1;
+        }
+        (void)sdbSetRawStatus(pStbRaw, SDB_STATUS_DROPPED);
+      }
+
+      sdbRelease(pSdb, pStb);
+    }
+  }
   return 0;
 }
 
 static int32_t mndSetDropMountRedoActions(SMnode *pMnode, STrans *pTrans, SDnodeObj *pDnode, SMountObj *pMount) {
+  SSdb *pSdb = pMnode->pSdb;
+  void *pIter = NULL;
+
+  for (int32_t db = 0; db < (int32_t)taosArrayGetSize(pMount->pDbs); ++db) {
+    SDbObj *pDb = taosArrayGet(pMount->pDbs, db);
+
+    while (1) {
+      SVgObj *pVgroup = NULL;
+      pIter = sdbFetch(pSdb, SDB_VGROUP, pIter, (void **)&pVgroup);
+      if (pIter == NULL) break;
+
+      if (pVgroup->dbUid == pDb->uid) {
+        for (int32_t vn = 0; vn < pVgroup->replica; ++vn) {
+          SVnodeGid *pVgid = pVgroup->vnodeGid + vn;
+          if (mndAddUnMountVnodeAction(pMnode, pTrans, pMount, pDb, pVgroup, pVgid, true) != 0) {
+            sdbRelease(pSdb, pVgroup);
+            return -1;
+          }
+
+          if (mndAddDropVnodeAction(pMnode, pTrans, pDb, pVgroup, pVgid, true) != 0) {
+            sdbRelease(pSdb, pVgroup);
+            return -1;
+          }
+        }
+      }
+
+      sdbRelease(pSdb, pVgroup);
+    }
+  }
+
   return 0;
 }
 
