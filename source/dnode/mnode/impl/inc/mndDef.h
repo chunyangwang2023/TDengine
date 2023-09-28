@@ -295,6 +295,7 @@ typedef struct {
   int32_t dnodeId;
   int64_t createdTime;
   int64_t updateTime;
+  SArray* pDbs;  // SDbObj
 } SMountObj;
 
 typedef struct {

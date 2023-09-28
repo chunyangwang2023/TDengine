@@ -1353,6 +1353,17 @@ int32_t tSerializeSDropVnodeReq(void* buf, int32_t bufLen, SDropVnodeReq* pReq);
 int32_t tDeserializeSDropVnodeReq(void* buf, int32_t bufLen, SDropVnodeReq* pReq);
 
 typedef struct {
+  int32_t vgId;
+  int32_t dnodeId;
+  int32_t mountVgId;
+  char    mountPath[256];
+  int64_t reserved[16];
+} SMountVnodeReq;
+
+int32_t tSerializeSMountVnodeReq(void* buf, int32_t bufLen, SMountVnodeReq* pReq);
+int32_t tDeserializeSMountVnodeReq(void* buf, int32_t bufLen, SMountVnodeReq* pReq);
+
+typedef struct {
   char    colName[TSDB_COL_NAME_LEN];
   char    stb[TSDB_TABLE_FNAME_LEN];
   int64_t stbUid;
