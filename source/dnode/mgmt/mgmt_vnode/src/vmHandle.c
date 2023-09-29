@@ -485,16 +485,61 @@ int32_t vmProcessDropVnodeReq(SVnodeMgmt *pMgmt, SRpcMsg *pMsg) {
 
 int32_t vmProcessMountVnodeReq(SVnodeMgmt *pMgmt, SRpcMsg *pMsg) {
   SMountVnodeReq req = {0};
-
   if (tDeserializeSMountVnodeReq(pMsg->pCont, pMsg->contLen, &req) != 0) {
     terrno = TSDB_CODE_INVALID_MSG;
     return -1;
   }
 
+  int32_t vgId = req.vgId;
   dInfo("vgId:%d, mount-vnode req is received, dnode:%d mountvgId:%d, path:%s db:%s dbuid:%" PRId64, req.vgId,
         req.dnodeId, req.mountVgId, req.mountPath, req.db, req.dbUid);
 
-  dInfo("vgId:%d, mount-vnode req is processed", req.vgId) ;return 0;
+  SVnodeObj *pVnode = vmAcquireVnode(pMgmt, vgId);
+  if (pVnode == NULL) {
+    dError("vgId:%d, failed to mount since vnode not exist", vgId);
+    terrno = TSDB_CODE_VND_NOT_EXIST;
+    return -1;
+  }
+
+  dInfo("vgId:%d, start to close vnode", vgId);
+  SWrapperCfg wrapperCfg = {
+      .dropped = pVnode->dropped,
+      .vgId = pVnode->vgId,
+      .vgVersion = pVnode->vgVersion,
+  };
+  tstrncpy(wrapperCfg.path, pVnode->path, sizeof(wrapperCfg.path));
+  vmCloseVnode(pMgmt, pVnode, false);
+  dInfo("vgId:%d, vnode is closed", vgId);
+
+  char path[TSDB_FILENAME_LEN] = {0};
+  snprintf(path, TSDB_FILENAME_LEN, "vnode%svnode%d", TD_DIRSEP, vgId);
+
+  dInfo("vgId:%d, start to mount vnode at %s", vgId, path);
+  if (vnodeMount(vgId, &req, pMgmt->pTfs) < 0) {
+    dError("vgId:%d, failed to mount vnode at %s since %s", vgId, path, terrstr());
+    return -1;
+  }
+  dInfo("vgId:%d, vnode is mounted", vgId);
+
+  dInfo("vgId:%d, open vnode", vgId);
+  SVnode *pImpl = vnodeOpen(path, pMgmt->pTfs, pMgmt->msgCb);
+  if (pImpl == NULL) {
+    dError("vgId:%d, failed to open vnode at %s since %s", vgId, path, terrstr());
+    return -1;
+  }
+
+  if (vmOpenVnode(pMgmt, &wrapperCfg, pImpl) != 0) {
+    dError("vgId:%d, failed to open vnode mgmt since %s", vgId, terrstr());
+    return -1;
+  }
+
+  if (vnodeStart(pImpl) != 0) {
+    dError("vgId:%d, failed to start sync since %s", vgId, terrstr());
+    return -1;
+  }
+
+  dInfo("vgId:%d, mount-req is processed", vgId);
+  return 0;
 }
 
 int32_t vmProcessUnMountVnodeReq(SVnodeMgmt *pMgmt, SRpcMsg *pMsg) {

@@ -349,18 +349,20 @@ static int32_t mndSetCreateMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMoun
 
     SDbObj *pSameNameDb = mndAcquireDb(pMnode, dbname);
     if (pSameNameDb != NULL) {
-      mError("db:%s, failed to mount since its already exist", pSameNameDb->name);
+      mError("mount:%s, db:%s failed to mount since its already exist", pMount->name, pSameNameDb->name);
       mndReleaseDb(pMnode, pSameNameDb);
       return -1;
     }
 
     SDbObj *pSameUidDb = mndAcquireDbByUid(pMnode, pDb->uid);
     if (pSameUidDb != NULL) {
-      mError("db:%s, failed to mount since uid:%" PRId64 " already exist in db:%s", pDb->name, pDb->uid,
-             pSameUidDb->name);
+      mError("mount:%s, db:%s failed to mount since uid:%" PRId64 " already exist in db:%s", pMount->name, pDb->name,
+             pDb->uid, pSameUidDb->name);
       mndReleaseDb(pMnode, pSameUidDb);
       return -1;
     }
+
+    mInfo("mount:%s, db:%s uid:%" PRId64 " will be mounted", pMount->name, pDb->name, pDb->uid);
 
     SSdbRaw *pDbRaw = mndDbActionEncode(pDb);
     if (pDbRaw == NULL) return -1;
@@ -369,12 +371,19 @@ static int32_t mndSetCreateMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMoun
 
     SVgObj *pVgroups = NULL;
     if (mndAllocVgroup(pMnode, pDb, &pVgroups) != 0) {
-      mError("db:%s, failed to create since %s", pDb->name, terrstr());
+      mError("mount:%s, db:%s failed to mount while alloc vgroup since %s", pMount->name, pDb->name, terrstr());
       return -1;
     }
 
-    for (int32_t v = 0; v < pDb->cfg.numOfVgroups; ++v) {
-      SSdbRaw *pVgRaw = mndVgroupActionEncode(pVgroups + v);
+    for (int32_t vg = 0; vg < pDb->cfg.numOfVgroups; ++vg) {
+      SVgObj *pVgroup = pVgroups + vg;
+      SVgObj *pMountVgroup = mndGetMountVgroupByDbAndIndex(pVgroupArray, pDb, vg);
+      pVgroup->version = pMountVgroup->version;
+
+      mInfo("mount:%s, vgId:%d is mounted from vgId:%d version:%d", pMount->name, pVgroup->vgId,
+            pMountVgroup->vgId, pVgroup->version);
+
+      SSdbRaw *pVgRaw = mndVgroupActionEncode(pVgroup);
       if (pVgRaw == NULL) return -1;
       if (mndTransAppendCommitlog(pTrans, pVgRaw) != 0) {
         taosMemoryFree(pVgroups);
@@ -384,10 +393,6 @@ static int32_t mndSetCreateMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMoun
         taosMemoryFree(pVgroups);
         return -1;
       }
-    }
-
-    for (int32_t vg = 0; vg < pDb->cfg.numOfVgroups; ++vg) {
-      SVgObj *pVgroup = pVgroups + vg;
 
       for (int32_t vn = 0; vn < pVgroup->replica; ++vn) {
         SVnodeGid *pVgid = pVgroup->vnodeGid + vn;
@@ -396,7 +401,6 @@ static int32_t mndSetCreateMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMoun
           return -1;
         }
 
-        SVgObj *pMountVgroup = mndGetMountVgroupByDbAndIndex(pVgroupArray, pDb, vn);
         if (mndAddMountVnodeAction(pMnode, pTrans, pMount, pDb, pVgroup, pVgid, pMountVgroup) != 0) {
           taosMemoryFree(pVgroups);
           return -1;
@@ -428,18 +432,21 @@ static int32_t mndSetCreateMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMoun
 
       SStbObj *pSameNameStb = mndAcquireStb(pMnode, pStb->name);
       if (pSameNameStb != NULL) {
-        mError("db:%s, failed to mount since stb:%s already exist", pDb->name, pSameNameStb->name);
+        mError("mount:%s, db:%s failed to mount since stb:%s already exist", pMount->name, pDb->name,
+               pSameNameStb->name);
         mndReleaseStb(pMnode, pSameNameStb);
         return -1;
       }
 
       SStbObj *pSameUidStb = mndAcquireStbByUid(pMnode, pStb->uid);
       if (pSameUidStb != NULL) {
-        mError("db:%s, failed to mount since stb:%s uid:%" PRId64 " already exist in stb:%s", pDb->name, pStb->name,
-               pStb->uid, pSameUidStb->name);
+        mError("mount:%s, db:%s failed to mount since stb:%s uid:%" PRId64 " already exist in stb:%s", pMount->name,
+               pDb->name, pStb->name, pStb->uid, pSameUidStb->name);
         mndReleaseStb(pMnode, pSameNameStb);
         return -1;
       }
+
+      mInfo("mount:%s, stb:%s will be mounted, uid:%" PRId64, pMount->name, pStb->name, pStb->uid);
 
       SSdbRaw *pStbRaw = mndStbActionEncode(pStb);
       if (pStbRaw == NULL) return -1;
@@ -693,10 +700,14 @@ static int32_t mndCreateMount(SMnode *pMnode, SDnodeObj *pDnode, SCreateMountReq
     goto _OVER;
   }
 
+  mInfo("mount:%s, parse meta info", pCreate->mountName);
   if (mmdMountParseCluster(root, &clusterObj) != 0) goto _OVER;
   if (mmdMountParseDbs(root, pDbs) != 0) goto _OVER;
   if (mmdMountParseVgroups(root, pVgrups, pDnode->id) != 0) goto _OVER;
   if (mmdMountParseStbs(root, pStbs) != 0) goto _OVER;
+  mInfo("mount:%s, meta info is parsed, cluster:%" PRId64 " dbs:%d vgroups:%d stbs:%d", pCreate->mountName,
+        clusterObj.id, (int32_t)taosArrayGetSize(pDbs), (int32_t)taosArrayGetSize(pVgrups),
+        (int32_t)taosArrayGetSize(pStbs));
 
   if (mndGetClusterId(pMnode) == clusterObj.id) {
     terrno = TSDB_CODE_MND_MOUNT_SAME_CULSTER;
@@ -767,7 +778,7 @@ static int32_t mndGetMountInfo(SMnode *pMnode, SDnodeObj *pDnode, SCreateMountRe
   };
   SRpcMsg rpcRsp = {0};
 
-  mInfo("mount:%s, send get-mount-info req to dnode:%d path:%s", pMount->mountName, pMount->mountDnodeId,
+  mInfo("mount:%s, send get-mount-info to dnode:%d path:%s", pMount->mountName, pMount->mountDnodeId,
         pMount->mountPath);
 
   SEpSet epSet = mndGetDnodeEpset(pDnode);
@@ -797,7 +808,8 @@ static int32_t mndProcessCreateMountReq(SRpcMsg *pReq) {
     goto _OVER;
   }
 
-  mInfo("mount:%s, start to create", createReq.mountName);
+  mInfo("mount:%s, create mount req is received, dnode:%d path:%s", createReq.mountName, createReq.mountDnodeId,
+        createReq.mountPath);
   if (mndCheckOperPrivilege(pMnode, pReq->info.conn.user, MND_OPER_CREATE_MOUNT) != 0) {
     goto _OVER;
   }
@@ -846,10 +858,12 @@ static int32_t mndProcessCreateMountReq(SRpcMsg *pReq) {
     goto _OVER;
   }
 
+  mInfo("mount:%s, get mnode info", createReq.mountName);
   if (mndGetMountInfo(pMnode, pDnode, &createReq, &mountInfo) != 0) {
     goto _OVER;
   }
 
+  mInfo("mount:%s, start to create", createReq.mountName);
   code = mndCreateMount(pMnode, pDnode, &createReq, &mountInfo, pReq);
   if (code == 0) code = TSDB_CODE_ACTION_IN_PROGRESS;
 
@@ -885,6 +899,7 @@ static int32_t mndSetDropMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMountO
     SDbObj *pDb = mndAcquireDbByUid(pMnode, dbUid);
     if (pDb == NULL) continue;
 
+    mInfo("mount:%s, db:%s uid:%" PRId64 " will be dropped", pMount->name, pDb->name, dbUid);
     SSdbRaw *pDbRaw = mndDbActionEncode(pDb);
     if (pDbRaw == NULL) {
       mndReleaseDb(pMnode, pDb);
@@ -908,6 +923,8 @@ static int32_t mndSetDropMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMountO
       if (pIter == NULL) break;
 
       if (pVgroup->dbUid == dbUid) {
+        mInfo("mount:%s, db:%s vgId:%d will be dropped", pMount->name, pDb->name, pVgroup->vgId);
+
         SSdbRaw *pVgRaw = mndVgroupActionEncode(pVgroup);
         if (pVgRaw == NULL || mndTransAppendCommitlog(pTrans, pVgRaw) != 0) {
           sdbCancelFetch(pSdb, pIter);
@@ -926,6 +943,8 @@ static int32_t mndSetDropMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMountO
       if (pIter == NULL) break;
 
       if (pStb->dbUid == dbUid) {
+        mInfo("mount:%s, db:%s stb:%s uid:%" PRId64 " will be dropped", pMount->name, pDb->name, pStb->name, pStb->uid);
+
         SSdbRaw *pStbRaw = mndStbActionEncode(pStb);
         if (pStbRaw == NULL || mndTransAppendCommitlog(pTrans, pStbRaw) != 0) {
           sdbCancelFetch(pSdb, pIter);
@@ -958,6 +977,8 @@ static int32_t mndSetDropMountRedoActions(SMnode *pMnode, STrans *pTrans, SDnode
       if (pVgroup->dbUid == pDb->uid) {
         for (int32_t vn = 0; vn < pVgroup->replica; ++vn) {
           SVnodeGid *pVgid = pVgroup->vnodeGid + vn;
+          mInfo("mount:%s, vgId:%d will send unmount to dnode:%d", pMount->name, pVgroup->vgId, pVgid->dnodeId);
+
           if (mndAddUnMountVnodeAction(pMnode, pTrans, pMount, pDb, pVgroup, pVgid, true) != 0) {
             sdbRelease(pSdb, pVgroup);
             sdbRelease(pSdb, pDb);
@@ -1015,7 +1036,7 @@ static int32_t mndProcessDropMountReq(SRpcMsg *pReq) {
     goto _OVER;
   }
 
-  mInfo("mount:%s, start to drop", dropReq.mountName);
+  mInfo("mount:%s, drop mount req is received", dropReq.mountName);
   if (mndCheckOperPrivilege(pMnode, pReq->info.conn.user, MND_OPER_DROP_USER) != 0) {
     goto _OVER;
   }
@@ -1042,6 +1063,7 @@ static int32_t mndProcessDropMountReq(SRpcMsg *pReq) {
     goto _OVER;
   }
 
+  mInfo("mount:%s, start to drop", dropReq.mountName);
   code = mndDropMount(pMnode, pReq, pDnode, pMount);
   if (code == 0) code = TSDB_CODE_ACTION_IN_PROGRESS;
 
