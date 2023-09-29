@@ -233,6 +233,29 @@ SStbObj *mndAcquireStbByUid(SMnode *pMnode, int64_t uid) {
   return NULL;
 }
 
+void *mndBuildMountInfoReq(SMnode *pMnode, SMountObj *pMount, bool isMount, int32_t *pContLen) {
+  SSetMountInfoReq mountReq = {0};
+  tstrncpy(mountReq.mountName, pMount->name, sizeof(mountReq.mountName));
+  tstrncpy(mountReq.mountPath, pMount->path, sizeof(mountReq.mountPath));
+  mountReq.isMount = isMount;
+
+  int32_t contLen = tSerializeSSetMountInfoReq(NULL, 0, &mountReq);
+  if (contLen < 0) {
+    terrno = TSDB_CODE_OUT_OF_MEMORY;
+    return NULL;
+  }
+
+  void *pReq = taosMemoryMalloc(contLen);
+  if (pReq == NULL) {
+    terrno = TSDB_CODE_OUT_OF_MEMORY;
+    return NULL;
+  }
+
+  tSerializeSSetMountInfoReq(pReq, contLen, &mountReq);
+  *pContLen = contLen;
+  return pReq;
+}
+
 void *mndBuildMountVnodeReq(SMnode *pMnode, SMountObj *pMount, SDnodeObj *pDnode, SDbObj *pDb, SVgObj *pVgroup,
                             int32_t mountVgId, int32_t *pContLen) {
   SMountVnodeReq mountReq = {0};
@@ -258,6 +281,30 @@ void *mndBuildMountVnodeReq(SMnode *pMnode, SMountObj *pMount, SDnodeObj *pDnode
   tSerializeSMountVnodeReq(pReq, contLen, &mountReq);
   *pContLen = contLen;
   return pReq;
+}
+
+int32_t mndAddSetMountInfoAction(SMnode *pMnode, STrans *pTrans, SMountObj *pMount, bool isMount) {
+  STransAction action = {0};
+
+  SDnodeObj *pDnode = mndAcquireDnode(pMnode, pMount->dnodeId);
+  if (pDnode == NULL) return -1;
+  action.epSet = mndGetDnodeEpset(pDnode);
+  mndReleaseDnode(pMnode, pDnode);
+
+  int32_t contLen = 0;
+  void   *pReq = mndBuildMountInfoReq(pMnode, pMount, isMount, &contLen);
+  if (pReq == NULL) return -1;
+
+  action.pCont = pReq;
+  action.contLen = contLen;
+  action.msgType = TDMT_DND_SET_MOUNT_INFO;
+
+  if (mndTransAppendRedoAction(pTrans, &action) != 0) {
+    taosMemoryFree(pReq);
+    return -1;
+  }
+
+  return 0;
 }
 
 int32_t mndAddMountVnodeAction(SMnode *pMnode, STrans *pTrans, SMountObj *pMount, SDbObj *pDb, SVgObj *pVgroup,
@@ -455,6 +502,10 @@ static int32_t mndSetCreateMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMoun
     }
 
     taosMemoryFree(pVgroups);
+  }
+
+  if (mndAddSetMountInfoAction(pMnode, pTrans, pMount, true) != 0) {
+    return -1;
   }
 
   return 0;
@@ -771,7 +822,7 @@ static int32_t mndGetMountInfo(SMnode *pMnode, SDnodeObj *pDnode, SCreateMountRe
   SRpcMsg rpcMsg = {
       .pCont = pHead,
       .contLen = contLen,
-      .msgType = TDMT_MND_GET_MOUNT_INFO,
+      .msgType = TDMT_DND_GET_MOUNT_INFO,
       .info.ahandle = (void *)0x9537,
       .info.refId = 0,
       .info.noResp = 0,
@@ -957,6 +1008,11 @@ static int32_t mndSetDropMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMountO
       sdbRelease(pSdb, pStb);
     }
   }
+
+  if (mndAddSetMountInfoAction(pMnode, pTrans, pMount, false) != 0) {
+    return -1;
+  }
+
   return 0;
 }
 

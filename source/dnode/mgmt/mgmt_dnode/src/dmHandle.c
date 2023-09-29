@@ -199,7 +199,7 @@ int32_t dmGetMountInfo(SDnodeMgmt *pMgmt, SGetMountInfoReq *pReq, SGetMountInfoR
   snprintf(cfgfile, 256, "%s/taos.cfg", tsTempDir);
   snprintf(jsonfile, 256, "%s/sdb.json", tsTempDir);
 
-  dInfo("mount:%s, prepare env at %s cfgFile:%s jsonFile:%s ", pReq->mountName, workdir, cfgfile, jsonfile);
+  dInfo("mount:%s, prepare env at %s cfgFile:%s jsonFile:%s", pReq->mountName, workdir, cfgfile, jsonfile);
   pCfgFile = taosOpenFile(cfgfile, TD_FILE_CREATE | TD_FILE_WRITE | TD_FILE_TRUNC);
   if (pCfgFile == NULL) {
     terrno = TAOS_SYSTEM_ERROR(errno);
@@ -291,7 +291,7 @@ int32_t dmProcessGetMountInfo(SDnodeMgmt *pMgmt, SRpcMsg *pMsg) {
   SGetMountInfoRsp rsp = {0};
 
   if (tDeserializeSGetMountInfoReq(pMsg->pCont, pMsg->contLen, &req) != 0) {
-    dError("failed to deserialize mount msg since %s", terrstr());
+    dError("failed to deserialize get-mount-info msg since %s", terrstr());
     return -1;
   } else {
     dInfo("mount:%s, get-mount-info req is received, path:%s", req.mountName, req.mountPath);
@@ -318,6 +318,42 @@ int32_t dmProcessGetMountInfo(SDnodeMgmt *pMgmt, SRpcMsg *pMsg) {
   tSerializeSGetMountInfoRsp(pRsp, rspLen, &rsp);
   pMsg->info.rsp = pRsp;
   pMsg->info.rspLen = rspLen;
+  return 0;
+}
+
+int32_t dmProcessSetMountInfo(SDnodeMgmt *pMgmt, SRpcMsg *pMsg) {
+  SSetMountInfoReq req = {0};
+
+  if (tDeserializeSSetMountInfoReq(pMsg->pCont, pMsg->contLen, &req) != 0) {
+    dError("failed to deserialize set-mount-info msg since %s", terrstr());
+    return -1;
+  } else {
+    dInfo("mount:%s, set-mount-info req is received, path:%s isMount:%d", req.mountName, req.mountPath, req.isMount);
+  }
+
+  char filename[TSDB_MOUNT_PATH_LEN] = {0};
+  snprintf(filename, TSDB_MOUNT_PATH_LEN, "%s%smounted", req.mountPath, TD_DIRSEP);
+
+  if (req.isMount) {
+    TdFilePtr pFile = taosOpenFile(filename, TD_FILE_CREATE | TD_FILE_WRITE | TD_FILE_TRUNC);
+    if (pFile == NULL) {
+      terrno = TAOS_SYSTEM_ERROR(errno);
+      dError("mount:%s, failed to create file:%s since %s", req.mountName, filename, terrstr());
+      return -1;
+    } else {
+      dInfo("mount:%s, file:%s is created", req.mountName, filename);
+    }
+    taosCloseFile(&pFile);
+  } else {
+    if (taosRemoveFile(filename) == 0) {
+      dInfo("mount:%s, file:%s is removed", req.mountName, filename);
+    } else {
+      terrno = TAOS_SYSTEM_ERROR(errno);
+      dError("mount:%s, failed to remove file:%s since %s ", req.mountName, filename, terrstr());
+      return -1;
+    }
+  }
+
   return 0;
 }
 
@@ -485,7 +521,8 @@ SArray *dmGetMsgHandles() {
   if (dmSetMgmtHandle(pArray, TDMT_DND_CONFIG_DNODE, dmPutNodeMsgToMgmtQueue, 0) == NULL) goto _OVER;
   if (dmSetMgmtHandle(pArray, TDMT_DND_SERVER_STATUS, dmPutNodeMsgToMgmtQueue, 0) == NULL) goto _OVER;
   if (dmSetMgmtHandle(pArray, TDMT_DND_SYSTABLE_RETRIEVE, dmPutNodeMsgToMgmtQueue, 0) == NULL) goto _OVER;
-  if (dmSetMgmtHandle(pArray, TDMT_MND_GET_MOUNT_INFO, dmPutNodeMsgToMgmtQueue, 0) == NULL) goto _OVER;
+  if (dmSetMgmtHandle(pArray, TDMT_DND_GET_MOUNT_INFO, dmPutNodeMsgToMgmtQueue, 0) == NULL) goto _OVER;
+  if (dmSetMgmtHandle(pArray, TDMT_DND_SET_MOUNT_INFO, dmPutNodeMsgToMgmtQueue, 0) == NULL) goto _OVER;
 
   // Requests handled by MNODE
   if (dmSetMgmtHandle(pArray, TDMT_MND_GRANT, dmPutNodeMsgToMgmtQueue, 0) == NULL) goto _OVER;

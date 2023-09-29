@@ -494,6 +494,12 @@ int32_t vmProcessMountVnodeReq(SVnodeMgmt *pMgmt, SRpcMsg *pMsg) {
   dInfo("vgId:%d, mount-vnode req is received, dnode:%d mountvgId:%d, path:%s db:%s dbuid:%" PRId64, req.vgId,
         req.dnodeId, req.mountVgId, req.mountPath, req.db, req.dbUid);
 
+  if (req.dnodeId != pMgmt->pData->dnodeId) {
+    terrno = TSDB_CODE_INVALID_MSG;
+    dError("vgId:%d, dnodeId:%d not matched with local dnode", req.vgId, req.dnodeId);
+    return -1;
+  }
+
   SVnodeObj *pVnode = vmAcquireVnode(pMgmt, vgId);
   if (pVnode == NULL) {
     dError("vgId:%d, failed to mount since vnode not exist", vgId);
@@ -544,16 +550,38 @@ int32_t vmProcessMountVnodeReq(SVnodeMgmt *pMgmt, SRpcMsg *pMsg) {
 
 int32_t vmProcessUnMountVnodeReq(SVnodeMgmt *pMgmt, SRpcMsg *pMsg) {
   SMountVnodeReq req = {0};
-
   if (tDeserializeSMountVnodeReq(pMsg->pCont, pMsg->contLen, &req) != 0) {
     terrno = TSDB_CODE_INVALID_MSG;
     return -1;
   }
 
+  int32_t vgId = req.vgId;
   dInfo("vgId:%d, un-mount-vnode req is received, dnode:%d mountvgId:%d, path:%s db:%s dbuid:%" PRId64, req.vgId,
         req.dnodeId, req.mountVgId, req.mountPath, req.db, req.dbUid);
 
-  dInfo("vgId:%d, un-mount-vnode req is processed", req.vgId);
+  if (req.dnodeId != pMgmt->pData->dnodeId) {
+    terrno = TSDB_CODE_INVALID_MSG;
+    dError("vgId:%d, dnodeId:%d not matched with local dnode", req.vgId, req.dnodeId);
+    return -1;
+  }
+
+  SVnodeObj *pVnode = vmAcquireVnode(pMgmt, vgId);
+  if (pVnode == NULL) {
+    dInfo("vgId:%d, failed to unmount since %s", vgId, terrstr());
+    terrno = TSDB_CODE_VND_NOT_EXIST;
+    return -1;
+  }
+
+  dInfo("vgId:%d, start to unmount vnode at %s", vgId, req.mountPath);
+  if (vnodeUnMount(vgId, &req, pMgmt->pTfs) < 0) {
+    dError("vgId:%d, failed to unmount vnode at %s since %s", vgId, req.mountPath, terrstr());
+    vmReleaseVnode(pMgmt, pVnode);
+    return -1;
+  }
+
+  vmReleaseVnode(pMgmt, pVnode);
+  dInfo("vgId:%d, vnode is unmounted", vgId);
+
   return 0;
 }
 

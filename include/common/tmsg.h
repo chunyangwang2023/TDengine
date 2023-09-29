@@ -677,6 +677,15 @@ int32_t tDeserializeSGetMountInfoRsp(void* buf, int32_t bufLen, SGetMountInfoRsp
 void    tFreeSGetMountInfoRsp(SGetMountInfoRsp* pRsp);
 
 typedef struct {
+  char    mountName[TSDB_MOUNT_NAME_LEN];
+  char    mountPath[TSDB_MOUNT_PATH_LEN];
+  int8_t  isMount;
+} SSetMountInfoReq;
+
+int32_t tSerializeSSetMountInfoReq(void* buf, int32_t bufLen, SSetMountInfoReq* pReq);
+int32_t tDeserializeSSetMountInfoReq(void* buf, int32_t bufLen, SSetMountInfoReq* pReq);
+
+typedef struct {
   char    user[TSDB_USER_LEN];
   char    pass[TSDB_PASSWORD_LEN];
   int32_t maxUsers;

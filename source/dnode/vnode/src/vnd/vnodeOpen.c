@@ -261,7 +261,7 @@ int32_t vnodeMount(int32_t vgId, SMountVnodeReq *pReq, STfs *pTfs) {
   snprintf(srcPath, TSDB_MOUNT_PATH_LEN, "%s%svnode%svnode%d", pReq->mountPath, TD_DIRSEP, TD_DIRSEP, srcVgId);
   snprintf(dstPath, TSDB_MOUNT_PATH_LEN, "%s%svnode%svnode%d", tfsGetPrimaryPath(pTfs), TD_DIRSEP, TD_DIRSEP, dstVgId);
 
-  vInfo("vgId:%d, file will be mount from %s to %s from vgId:%d at %s", dstVgId, srcPath, dstPath, srcVgId,
+  vInfo("vgId:%d, file will be mount from %s to %s, vgId:%d at %s", dstVgId, srcPath, dstPath, srcVgId,
         pReq->mountPath);
 
   // vnodes.json
@@ -304,7 +304,7 @@ int32_t vnodeMount(int32_t vgId, SMountVnodeReq *pReq, STfs *pTfs) {
 
   vInfo("vgId:%d, remove meta dir at %s", dstVgId, dstMetaPath);
   taosRemoveDir(dstMetaPath);
-  
+
   vInfo("vgId:%d, link meta from %s to %s", dstVgId, srcMetaPath, dstMetaPath);
   if (taosSymlink(srcMetaPath, dstMetaPath) != 0) {
     terrno = TAOS_SYSTEM_ERROR(errno);
@@ -369,6 +369,56 @@ int32_t vnodeMount(int32_t vgId, SMountVnodeReq *pReq, STfs *pTfs) {
 
   taosCloseDir(&pDir);
   vInfo("vgId:%d, all file is mounted", dstVgId);
+  return 0;
+}
+
+int32_t vnodeUnMount(int32_t vgId, SMountVnodeReq *pReq, STfs *pTfs) {
+  int32_t    ret = 0;
+  SVnodeInfo srcInfo = {0};
+  SVnodeInfo dstInfo = {0};
+  int32_t    srcVgId = pReq->mountVgId;
+  int32_t    dstVgId = vgId;
+
+  char srcPath[TSDB_MOUNT_PATH_LEN] = {0};
+  char dstPath[TSDB_MOUNT_PATH_LEN] = {0};
+  snprintf(srcPath, TSDB_MOUNT_PATH_LEN, "%s%svnode%svnode%d", pReq->mountPath, TD_DIRSEP, TD_DIRSEP, srcVgId);
+  snprintf(dstPath, TSDB_MOUNT_PATH_LEN, "%s%svnode%svnode%d", tfsGetPrimaryPath(pTfs), TD_DIRSEP, TD_DIRSEP, dstVgId);
+
+  vInfo("vgId:%d, file will be unmount from %s to %s, vgId:%d at %s", dstVgId, srcPath, dstPath, srcVgId,
+        pReq->mountPath);
+
+  // vnodes.json
+  vInfo("vgId:%d, load info at %s", dstVgId, srcPath);
+  ret = vnodeLoadInfo(srcPath, &srcInfo);
+  if (ret < 0) {
+    vError("vgId:%d, failed to read vnode config from %s since %s", dstVgId, srcPath, tstrerror(terrno));
+    return -1;
+  }
+
+  vInfo("vgId:%d, load info at %s", dstVgId, dstPath);
+  ret = vnodeLoadInfo(dstPath, &dstInfo);
+  if (ret < 0) {
+    vError("vgId:%d, failed to read vnode config from %s since %s", dstVgId, dstPath, tstrerror(terrno));
+    return -1;
+  }
+
+  srcInfo.state = dstInfo.state;
+  srcInfo.config.vndStats = dstInfo.config.vndStats;
+
+  vInfo("vgId:%d, save info at %s", dstVgId, srcPath);
+  ret = vnodeSaveInfo(srcPath, &srcInfo);
+  if (ret < 0) {
+    vError("vgId:%d, failed to save vnode config since %s", dstVgId, tstrerror(terrno));
+    return -1;
+  }
+
+  vInfo("vgId:%d, commit info info at %s", dstVgId, srcPath);
+  ret = vnodeCommitInfo(srcPath);
+  if (ret < 0) {
+    vError("vgId:%d, failed to commit vnode config since %s", dstVgId, tstrerror(terrno));
+    return -1;
+  }
+
   return 0;
 }
 

@@ -47,6 +47,7 @@ int32_t dmProcessConfigReq(SDnodeMgmt *pMgmt, SRpcMsg *pMsg);
 int32_t dmProcessAuthRsp(SDnodeMgmt *pMgmt, SRpcMsg *pMsg);
 int32_t dmProcessGrantRsp(SDnodeMgmt *pMgmt, SRpcMsg *pMsg);
 int32_t dmProcessGetMountInfo(SDnodeMgmt *pMgmt, SRpcMsg *pMsg);
+int32_t dmProcessSetMountInfo(SDnodeMgmt *pMgmt, SRpcMsg *pMsg);
 int32_t dmProcessServerRunStatus(SDnodeMgmt *pMgmt, SRpcMsg *pMsg);
 int32_t dmProcessRetrieve(SDnodeMgmt *pMgmt, SRpcMsg *pMsg);
 int32_t dmProcessGrantReq(void *pInfo, SRpcMsg *pMsg);
