@@ -483,9 +483,34 @@ int32_t vmProcessDropVnodeReq(SVnodeMgmt *pMgmt, SRpcMsg *pMsg) {
   return 0;
 }
 
-int32_t vmProcessMountVnodeReq(SVnodeMgmt *pMgmt, SRpcMsg *pMsg) { return 0; }
+int32_t vmProcessMountVnodeReq(SVnodeMgmt *pMgmt, SRpcMsg *pMsg) {
+  SMountVnodeReq req = {0};
 
-int32_t vmProcessUnMountVnodeReq(SVnodeMgmt *pMgmt, SRpcMsg *pMsg) { return 0; }
+  if (tDeserializeSMountVnodeReq(pMsg->pCont, pMsg->contLen, &req) != 0) {
+    terrno = TSDB_CODE_INVALID_MSG;
+    return -1;
+  }
+
+  dInfo("vgId:%d, mount-vnode req is received, dnode:%d mountvgId:%d, path:%s db:%s dbuid:%" PRId64, req.vgId,
+        req.dnodeId, req.mountVgId, req.mountPath, req.db, req.dbUid);
+
+  dInfo("vgId:%d, mount-vnode req is processed", req.vgId) ;return 0;
+}
+
+int32_t vmProcessUnMountVnodeReq(SVnodeMgmt *pMgmt, SRpcMsg *pMsg) {
+  SMountVnodeReq req = {0};
+
+  if (tDeserializeSMountVnodeReq(pMsg->pCont, pMsg->contLen, &req) != 0) {
+    terrno = TSDB_CODE_INVALID_MSG;
+    return -1;
+  }
+
+  dInfo("vgId:%d, un-mount-vnode req is received, dnode:%d mountvgId:%d, path:%s db:%s dbuid:%" PRId64, req.vgId,
+        req.dnodeId, req.mountVgId, req.mountPath, req.db, req.dbUid);
+
+  dInfo("vgId:%d, un-mount-vnode req is processed", req.vgId);
+  return 0;
+}
 
 SArray *vmGetMsgHandles() {
   int32_t code = -1;

@@ -241,7 +241,7 @@ void *mndBuildMountVnodeReq(SMnode *pMnode, SMountObj *pMount, SDnodeObj *pDnode
   mountReq.mountVgId = mountVgId;
   tstrncpy(mountReq.mountPath, pMount->path, sizeof(mountReq.mountPath));
   mountReq.dbUid = pDb->uid;
-  tstrncpy(mountReq.mountPath, pDb->name, sizeof(mountReq.db));
+  tstrncpy(mountReq.db, pDb->name, sizeof(mountReq.db));
 
   int32_t contLen = tSerializeSMountVnodeReq(NULL, 0, &mountReq);
   if (contLen < 0) {
@@ -341,7 +341,6 @@ static int32_t mndSetCreateMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMoun
   if (mndTransAppendCommitlog(pTrans, pCommitRaw) != 0) return -1;
   if (sdbSetRawStatus(pCommitRaw, SDB_STATUS_READY) != 0) return -1;
 
-#if 0
   for (int32_t i = 0; i < (int32_t)taosArrayGetSize(pDbArray); ++i) {
     SDbObj *pDb = taosArrayGet(pDbArray, i);
     char    dbname[TSDB_DB_FNAME_LEN] = {0};
@@ -450,7 +449,7 @@ static int32_t mndSetCreateMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMoun
 
     taosMemoryFree(pVgroups);
   }
-#endif
+
   return 0;
 }
 
