@@ -341,7 +341,27 @@ int32_t dmProcessSetMountInfo(SDnodeMgmt *pMgmt, SRpcMsg *pMsg) {
       dError("mount:%s, failed to create file:%s since %s", req.mountName, filename, terrstr());
       return -1;
     } else {
-      dInfo("mount:%s, file:%s is created", req.mountName, filename);
+      char           buf[512];
+      int32_t        bufLen;
+      int64_t        ms = taosGetTimestampMs();
+      struct tm      Tm, *ptm;
+      struct timeval timeSecs;
+      taosGetTimeOfDay(&timeSecs);
+      time_t curTime = timeSecs.tv_sec;
+      ptm = taosLocalTime(&curTime, &Tm, NULL);
+
+      dInfo("mount:%s, file:%s is created, ms:%" PRId64, req.mountName, filename, ms);
+      bufLen = snprintf(buf, sizeof(buf), "mountName    %s\r\n", req.mountName);
+      if (taosWriteFile(pFile, buf, bufLen) != bufLen) return -1;
+      bufLen = snprintf(buf, sizeof(buf), "mountPath    %s\r\n", req.mountPath);
+      if (taosWriteFile(pFile, buf, bufLen) != bufLen) return -1;
+      bufLen = snprintf(buf, sizeof(buf), "mountTimeMs  %" PRId64 "\r\n", ms);
+      if (taosWriteFile(pFile, buf, bufLen) != bufLen) return -1;
+      bufLen = sprintf(buf, "mountTimeStr %04d/%02d/%02d %02d:%02d:%02d.%06d", ptm->tm_year + 1900, ptm->tm_mon + 1,
+                       ptm->tm_mday, ptm->tm_hour, ptm->tm_min, ptm->tm_sec, (int32_t)timeSecs.tv_usec);
+      if (taosWriteFile(pFile, buf, bufLen) != bufLen) return -1;
+
+      UNUSED(taosFsyncFile(pFile));
     }
     taosCloseFile(&pFile);
   } else {
