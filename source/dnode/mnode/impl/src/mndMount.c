@@ -491,9 +491,15 @@ static int32_t mndSetCreateMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMoun
       }
     }
 
-    for (int32_t stb = 0; stb < (int32_t)taosArrayGetSize(pSrcDbs); ++stb) {
-      SStbObj *pSrcStb = taosArrayGet(pSrcDbs, stb);
+    for (int32_t stb = 0; stb < (int32_t)taosArrayGetSize(pSrcStbs); ++stb) {
+      SStbObj *pSrcStb = taosArrayGet(pSrcStbs, stb);
+      char stbBaseName[TSDB_TABLE_FNAME_LEN] = {0};
+      char dstStbName[TSDB_TABLE_FNAME_LEN] = {0};
+      mndExtractTbNameFromStbFullName(pSrcStb->name, stbBaseName, TSDB_TABLE_NAME_LEN);
+      snprintf(dstStbName, TSDB_TABLE_FNAME_LEN - 1, "%s.%s", pSrcDb->name, stbBaseName);
+
       SStbObj *pDstStb = pSrcStb;
+      tstrncpy(pDstStb->name, dstStbName, TSDB_TABLE_FNAME_LEN);
       tstrncpy(pDstStb->db, pDstDb->name, TSDB_DB_FNAME_LEN);
       pDstStb->dbUid = pDstDb->uid;
 
