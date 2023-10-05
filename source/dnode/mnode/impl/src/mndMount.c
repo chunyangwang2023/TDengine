@@ -405,11 +405,6 @@ static SVgObj *mndGetMountVgroupByDbAndIndex(SArray *pVgroups, SDbObj *pDb, int3
 
 static int32_t mndSetCreateMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMountObj *pMount, SArray *pSrcDbs,
                                            SArray *pSrcVgroups, SArray *pSrcStbs) {
-  SSdbRaw *pCommitRaw = mndMountActionEncode(pMount);
-  if (pCommitRaw == NULL) return -1;
-  if (mndTransAppendCommitlog(pTrans, pCommitRaw) != 0) return -1;
-  if (sdbSetRawStatus(pCommitRaw, SDB_STATUS_READY) != 0) return -1;
-
   int32_t vgPairPos = 0;
   for (int32_t db = 0; db < (int32_t)taosArrayGetSize(pSrcDbs); ++db) {
     SDbObj *pSrcDb = taosArrayGet(pSrcDbs, db);
@@ -479,8 +474,7 @@ static int32_t mndSetCreateMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMoun
         return -1;
       }
 
-      if (mndAddUnMountVnodeAction(pMnode, pTrans, pMount, pDstDb, pDstVgroup, pDstVgid, pSrcVgroup->vgId, 0) !=
-          0) {
+      if (mndAddUnMountVnodeAction(pMnode, pTrans, pMount, pDstDb, pDstVgroup, pDstVgid, pSrcVgroup->vgId, 0) != 0) {
         taosMemoryFree(pDstVgroups);
         return -1;
       }
@@ -493,8 +487,8 @@ static int32_t mndSetCreateMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMoun
 
     for (int32_t stb = 0; stb < (int32_t)taosArrayGetSize(pSrcStbs); ++stb) {
       SStbObj *pSrcStb = taosArrayGet(pSrcStbs, stb);
-      char stbBaseName[TSDB_TABLE_FNAME_LEN] = {0};
-      char dstStbName[TSDB_TABLE_FNAME_LEN] = {0};
+      char     stbBaseName[TSDB_TABLE_FNAME_LEN] = {0};
+      char     dstStbName[TSDB_TABLE_FNAME_LEN] = {0};
       mndExtractTbNameFromStbFullName(pSrcStb->name, stbBaseName, TSDB_TABLE_NAME_LEN);
       snprintf(dstStbName, TSDB_TABLE_FNAME_LEN - 1, "%s.%s", pSrcDb->name, stbBaseName);
 
@@ -532,6 +526,11 @@ static int32_t mndSetCreateMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMoun
   if (mndAddSetMountInfoAction(pMnode, pTrans, pMount, true) != 0) {
     return -1;
   }
+
+  SSdbRaw *pCommitRaw = mndMountActionEncode(pMount);
+  if (pCommitRaw == NULL) return -1;
+  if (mndTransAppendCommitlog(pTrans, pCommitRaw) != 0) return -1;
+  if (sdbSetRawStatus(pCommitRaw, SDB_STATUS_READY) != 0) return -1;
 
   return 0;
 }
@@ -829,9 +828,9 @@ static int32_t mndCreateMount(SMnode *pMnode, SDnodeObj *pDnode, SCreateMountReq
 
   mInfo("trans:%d, used to create mount:%s", pTrans->id, pCreate->mountName);
   if (mndTrancCheckConflict(pMnode, pTrans) != 0) goto _OVER;
+  if (mndSetCreateMountCommitLogs(pMnode, pTrans, &mountObj, pDbs, pVgrups, pStbs) != 0) goto _OVER;
   if (mndSetCreateMountRedoLogs(pMnode, pTrans, &mountObj) != 0) goto _OVER;
   if (mndSetCreateMountUndoLogs(pMnode, pTrans, &mountObj) != 0) goto _OVER;
-  if (mndSetCreateMountCommitLogs(pMnode, pTrans, &mountObj, pDbs, pVgrups, pStbs) != 0) goto _OVER;
   if (mndTransPrepare(pMnode, pTrans) != 0) goto _OVER;
 
   code = 0;
@@ -1083,11 +1082,13 @@ static int32_t mndSetDropMountRedoActions(SMnode *pMnode, STrans *pTrans, SDnode
         for (int32_t vn = 0; vn < pVgroup->replica; ++vn) {
           SVnodeGid *pVgid = pVgroup->vnodeGid + vn;
           int32_t    srcVgId = mndGetMountSrcVgId(pMount, pVgroup->vgId);
-          mInfo("mount:%s, vgId:%d will send unmount to dnode:%d, src vgId:%d", pMount->name, pVgroup->vgId,
+          mInfo("mount:%s, vgId:%d will send un-mount-vnode req to dnode:%d, src vgId:%d", pMount->name, pVgroup->vgId,
                 pVgid->dnodeId, srcVgId);
           if (srcVgId <= 1) {
-            mInfo("mount:%s, vgId:%d failed send unmount to dnode:%d since src vgId:%d", pMount->name, pVgroup->vgId,
+            mInfo("mount:%s, vgId:%d failed send un-mount-vnode req to dnode:%d since src vgId:%d", pMount->name, pVgroup->vgId,
                   pVgid->dnodeId, srcVgId);
+            sdbRelease(pSdb, pVgroup);
+            sdbRelease(pSdb, pDb);
             terrno = TSDB_CODE_APP_ERROR;
             return -1;
           }

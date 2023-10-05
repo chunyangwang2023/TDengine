@@ -221,7 +221,7 @@ int32_t vnodeAlterHashRange(const char *srcPath, const char *dstPath, SAlterVnod
 int32_t vnodeRenameFile(char *path, char *bname, int32_t srcVgId, int32_t dstVgId) {
   char *vpos = strstr(bname, "v");
   char *fpos = strstr(bname, "f");
-  if (vpos == NULL || fpos == NULL || fpos - vpos <= 1) {
+  if (vpos == NULL || fpos == NULL || fpos - vpos <= 1 || vpos != bname) {
     vInfo("vgId:%d, no need to rename file %s since vpos and fpos not found", dstVgId, bname);
     return 0;
   }
@@ -296,6 +296,29 @@ int32_t vnodeMount(int32_t vgId, SMountVnodeReq *pReq, STfs *pTfs) {
     return -1;
   }
 
+  // sync
+  char srcSyncPath[TSDB_MOUNT_PATH_LEN] = {0};
+  char dstSyncPath[TSDB_MOUNT_PATH_LEN] = {0};
+  char bakSyncPath[TSDB_MOUNT_PATH_LEN] = {0};
+  snprintf(srcSyncPath, TSDB_FILENAME_LEN, "%s%ssync%sraft_store.json", srcPath, TD_DIRSEP, TD_DIRSEP);
+  snprintf(dstSyncPath, TSDB_FILENAME_LEN, "%s%ssync%sraft_store.json", dstPath, TD_DIRSEP, TD_DIRSEP);
+  snprintf(bakSyncPath, TSDB_FILENAME_LEN, "%s%ssync%sbak_raft_store.json", dstPath, TD_DIRSEP, TD_DIRSEP);
+
+  vInfo("vgId:%d, rename sync from %s to %s", dstVgId, dstSyncPath, bakSyncPath);
+  if (taosRenameFile(dstSyncPath, bakSyncPath) < 0) {
+    terrno = TAOS_SYSTEM_ERROR(errno);
+    vInfo("vgId:%d, failed to rename sync from %s to %s since %s", dstVgId, dstSyncPath, bakSyncPath, terrstr());
+    return -1;
+  }
+
+  vInfo("vgId:%d, copy sync from %s to %s", dstVgId, srcSyncPath, dstSyncPath);
+  (void)taosRemoveFile(dstSyncPath);
+  if (taosCopyFile(srcSyncPath, dstSyncPath) < 0) {
+    terrno = TAOS_SYSTEM_ERROR(errno);
+    vError("vgId:%d, failed to copy sync from %s to %s since %s", dstVgId, srcSyncPath, dstSyncPath, tstrerror(terrno));
+    return -1;
+  }
+
   // meta
   char srcMetaPath[TSDB_MOUNT_PATH_LEN] = {0};
   char dstMetaPath[TSDB_MOUNT_PATH_LEN] = {0};
@@ -307,7 +330,7 @@ int32_t vnodeMount(int32_t vgId, SMountVnodeReq *pReq, STfs *pTfs) {
   vInfo("vgId:%d, rename meta dir from %s to %s", dstVgId, dstMetaPath, bakMetaPath);
   if (taosRenameFile(dstMetaPath, bakMetaPath) != 0) {
     terrno = TAOS_SYSTEM_ERROR(errno);
-    vError("vgId:%d, failed to remove meta dir from %s to %s since %s", dstVgId, dstMetaPath, bakMetaPath, terrstr());
+    vError("vgId:%d, failed to rename meta dir from %s to %s since %s", dstVgId, dstMetaPath, bakMetaPath, terrstr());
     return -1;
   }
 
@@ -330,7 +353,7 @@ int32_t vnodeMount(int32_t vgId, SMountVnodeReq *pReq, STfs *pTfs) {
   vInfo("vgId:%d, rename wal dir from %s to %s", dstVgId, dstWalPath, bakWalPath);
   if (taosRenameFile(dstWalPath, bakWalPath) != 0) {
     terrno = TAOS_SYSTEM_ERROR(errno);
-    vInfo("vgId:%d, failed to remove wal dir from %s to %s since %s", dstVgId, dstWalPath, bakWalPath, terrstr());
+    vInfo("vgId:%d, failed to rename wal dir from %s to %s since %s", dstVgId, dstWalPath, bakWalPath, terrstr());
     return -1;
   }
 
@@ -373,15 +396,16 @@ int32_t vnodeMount(int32_t vgId, SMountVnodeReq *pReq, STfs *pTfs) {
   }
 
   while ((de = taosReadDir(pDir)) != NULL) {
-    if (strcmp(taosGetDirEntryName(de), ".") == 0 || strcmp(taosGetDirEntryName(de), "..") == 0) continue;
+    char *bname = taosGetDirEntryName(de);
+    if (strcmp(bname, ".") == 0 || strcmp(bname, "..") == 0) continue;
 
     char filename[1024] = {0};
-    snprintf(filename, sizeof(filename), "%s%s%s", dstTsdbPath, TD_DIRSEP, taosGetDirEntryName(de));
+    snprintf(filename, sizeof(filename), "%s%s%s", dstTsdbPath, TD_DIRSEP, bname);
     if (taosDirEntryIsDir(de)) {
       vInfo("vgId:%d, found dirctory %s", dstVgId, filename);
     } else {
       vInfo("vgId:%d, found file %s, rename from vgId:%d to vgId:%d", dstVgId, filename, srcVgId, dstVgId);
-      if (vnodeRenameFile(dstTsdbPath, taosGetDirEntryName(de), srcVgId, dstVgId) != 0) {
+      if (vnodeRenameFile(dstTsdbPath, bname, srcVgId, dstVgId) != 0) {
         terrno = TAOS_SYSTEM_ERROR(errno);
         vError("vgId:%d, failed to rename from vgId:%d to vgId:%d since %s", dstVgId, srcVgId, dstVgId, terrstr());
         taosCloseDir(&pDir);
@@ -407,7 +431,7 @@ int32_t vnodeUnMount(int32_t vgId, SMountVnodeReq *pReq, STfs *pTfs) {
   snprintf(srcPath, TSDB_MOUNT_PATH_LEN, "%s%svnode%svnode%d", pReq->mountPath, TD_DIRSEP, TD_DIRSEP, srcVgId);
   snprintf(dstPath, TSDB_MOUNT_PATH_LEN, "%s%svnode%svnode%d", tfsGetPrimaryPath(pTfs), TD_DIRSEP, TD_DIRSEP, dstVgId);
 
-  vInfo("vgId:%d, file will be unmount from %s to %s, vgId:%d at %s", dstVgId, srcPath, dstPath, srcVgId,
+  vInfo("vgId:%d, file will be unmounted, src %s, dst %s, vgId:%d at %s", dstVgId, srcPath, dstPath, srcVgId,
         pReq->mountPath);
 
   // vnodes.json
@@ -442,6 +466,29 @@ int32_t vnodeUnMount(int32_t vgId, SMountVnodeReq *pReq, STfs *pTfs) {
     return -1;
   }
 
+  // sync
+  char srcSyncPath[TSDB_MOUNT_PATH_LEN] = {0};
+  char dstSyncPath[TSDB_MOUNT_PATH_LEN] = {0};
+  char bakSyncPath[TSDB_MOUNT_PATH_LEN] = {0};
+  snprintf(srcSyncPath, TSDB_FILENAME_LEN, "%s%ssync%sraft_store.json", srcPath, TD_DIRSEP, TD_DIRSEP);
+  snprintf(dstSyncPath, TSDB_FILENAME_LEN, "%s%ssync%sraft_store.json", dstPath, TD_DIRSEP, TD_DIRSEP);
+  snprintf(bakSyncPath, TSDB_FILENAME_LEN, "%s%ssync%sbak_raft_store.json", dstPath, TD_DIRSEP, TD_DIRSEP);
+
+  vInfo("vgId:%d, copy sync from %s to %s", dstVgId, dstSyncPath, srcSyncPath);
+  (void)taosRemoveFile(srcSyncPath);
+  if (taosCopyFile(dstSyncPath, srcSyncPath) < 0) {
+    terrno = TAOS_SYSTEM_ERROR(errno);
+    vError("vgId:%d, failed to copy sync from %s to %s since %s", dstVgId, dstSyncPath, srcSyncPath, tstrerror(terrno));
+    // return -1;
+  }
+
+  vInfo("vgId:%d, rename sync from %s to %s", dstVgId, bakSyncPath, dstSyncPath);
+  if (taosRenameFile(bakSyncPath, dstSyncPath) != 0) {
+    terrno = TAOS_SYSTEM_ERROR(errno);
+    vInfo("vgId:%d, failed to rename sync from %s to %s since %s", dstVgId, bakSyncPath, dstSyncPath, terrstr());
+    // return -1;
+  }
+
   // meta
   char dstMetaPath[TSDB_MOUNT_PATH_LEN] = {0};
   char bakMetaPath[TSDB_MOUNT_PATH_LEN] = {0};
@@ -452,7 +499,7 @@ int32_t vnodeUnMount(int32_t vgId, SMountVnodeReq *pReq, STfs *pTfs) {
   (void)taosRemoveFile(dstMetaPath);
 
   vInfo("vgId:%d, rename meta dir from %s to %s", dstVgId, bakMetaPath, dstMetaPath);
-  if (taosRenameFile(dstMetaPath, bakMetaPath) != 0) {
+  if (taosRenameFile(bakMetaPath, dstMetaPath) != 0) {
     terrno = TAOS_SYSTEM_ERROR(errno);
     vError("vgId:%d, failed to rename meta dir from %s to %s since %s", dstVgId, bakMetaPath, dstMetaPath, terrstr());
     // return -1;
@@ -482,8 +529,8 @@ int32_t vnodeUnMount(int32_t vgId, SMountVnodeReq *pReq, STfs *pTfs) {
   snprintf(dstTsdbPath, TSDB_FILENAME_LEN, "%s%stsdb", dstPath, TD_DIRSEP);
   snprintf(bakTsdbPath, TSDB_FILENAME_LEN, "%s%sbak_tsdb", dstPath, TD_DIRSEP);
 
-  vInfo("vgId:%d, remove tsdb dir link at %s", dstVgId, dstTsdbPath);
-  taosRemoveFile(dstTsdbPath);
+  vInfo("vgId:%d, remove tsdb link at %s", dstVgId, dstTsdbPath);
+  (void)taosRemoveFile(dstTsdbPath);
 
   vInfo("vgId:%d, rename tsdb dir from %s to %s", dstVgId, bakTsdbPath, dstTsdbPath);
   if (taosRenameFile(bakTsdbPath, dstTsdbPath) != 0) {
@@ -502,15 +549,16 @@ int32_t vnodeUnMount(int32_t vgId, SMountVnodeReq *pReq, STfs *pTfs) {
   }
 
   while ((de = taosReadDir(pDir)) != NULL) {
-    if (strcmp(taosGetDirEntryName(de), ".") == 0 || strcmp(taosGetDirEntryName(de), "..") == 0) continue;
+    char *bname = taosGetDirEntryName(de);
+    if (strcmp(bname, ".") == 0 || strcmp(bname, "..") == 0) continue;
 
     char filename[1024] = {0};
-    snprintf(filename, sizeof(filename), "%s%s%s", srcTsdbPath, TD_DIRSEP, taosGetDirEntryName(de));
+    snprintf(filename, sizeof(filename), "%s%s%s", srcTsdbPath, TD_DIRSEP, bname);
     if (taosDirEntryIsDir(de)) {
       vInfo("vgId:%d, found dirctory %s", dstVgId, filename);
     } else {
       vInfo("vgId:%d, found file %s, rename from %d to %d", dstVgId, filename, dstVgId, srcVgId);
-      if (vnodeRenameFile(srcTsdbPath, filename, dstVgId, srcVgId) != 0) {
+      if (vnodeRenameFile(srcTsdbPath, bname, dstVgId, srcVgId) != 0) {
         terrno = TAOS_SYSTEM_ERROR(errno);
         vError("vgId:%d, failed to rename from %d to %d since %s", dstVgId, dstVgId, srcVgId, terrstr());
         taosCloseDir(&pDir);
