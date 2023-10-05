@@ -63,7 +63,9 @@ void mndCleanupMount(SMnode *pMnode) {}
 SSdbRaw *mndMountActionEncode(SMountObj *pMount) {
   terrno = TSDB_CODE_OUT_OF_MEMORY;
 
-  SSdbRaw *pRaw = sdbAllocRaw(SDB_MOUNT, MOUNT_VER_NUMBER, sizeof(SMountObj) + MOUNT_RESERVE_SIZE);
+  SSdbRaw *pRaw = sdbAllocRaw(SDB_MOUNT, MOUNT_VER_NUMBER,
+                              sizeof(SMountObj) + sizeof(int64_t) * pMount->dbSize +
+                                  sizeof(SMountVgPair) * pMount->vgPairSize + MOUNT_RESERVE_SIZE);
   if (pRaw == NULL) goto _OVER;
 
   int32_t dataPos = 0;
@@ -165,6 +167,10 @@ static int32_t mndMountActionUpdate(SSdb *pSdb, SMountObj *pOld, SMountObj *pNew
   mTrace("mount:%s, perform update action, old row:%p new row:%p", pOld->name, pOld, pNew);
   tstrncpy(pOld->path, pNew->path, TSDB_MOUNT_PATH_LEN);
   pOld->dnodeId = pNew->dnodeId;
+  pOld->dbSize = pNew->dbSize;
+  pOld->vgPairSize = pNew->vgPairSize;
+  memcpy(pOld->dbUids, pNew->dbUids, sizeof(int64_t) * pNew->dbSize);
+  memcpy(pOld->vgPairs, pNew->vgPairs, sizeof(SMountVgPair) * pNew->vgPairSize);
   return 0;
 }
 
@@ -268,13 +274,14 @@ void *mndBuildMountInfoReq(SMnode *pMnode, SMountObj *pMount, bool isMount, int3
 }
 
 void *mndBuildMountVnodeReq(SMnode *pMnode, SMountObj *pMount, SDnodeObj *pDnode, SDbObj *pDb, SVgObj *pVgroup,
-                            int32_t mountVgId, int32_t *pContLen) {
+                            int32_t mountVgId, int8_t isMount, int32_t *pContLen) {
   SMountVnodeReq mountReq = {0};
   mountReq.vgId = pVgroup->vgId;
   mountReq.dnodeId = pDnode->id;
   mountReq.mountVgId = mountVgId;
   tstrncpy(mountReq.mountPath, pMount->path, sizeof(mountReq.mountPath));
   mountReq.dbUid = pDb->uid;
+  mountReq.isMount = isMount;
   tstrncpy(mountReq.db, pDb->name, sizeof(mountReq.db));
 
   int32_t contLen = tSerializeSMountVnodeReq(NULL, 0, &mountReq);
@@ -318,17 +325,17 @@ int32_t mndAddSetMountInfoAction(SMnode *pMnode, STrans *pTrans, SMountObj *pMou
   return 0;
 }
 
-int32_t mndAddMountVnodeAction(SMnode *pMnode, STrans *pTrans, SMountObj *pMount, SDbObj *pDb, SVgObj *pVgroup,
-                               SVnodeGid *pVgid, SVgObj *pMountVgroup) {
+int32_t mndAddMountVnodeAction(SMnode *pMnode, STrans *pTrans, SMountObj *pMount, SDbObj *pDstDb, SVgObj *pDstVgroup,
+                               SVnodeGid *pDstVgid, SVgObj *pSrcVgroup) {
   STransAction action = {0};
 
-  SDnodeObj *pDnode = mndAcquireDnode(pMnode, pVgid->dnodeId);
+  SDnodeObj *pDnode = mndAcquireDnode(pMnode, pDstVgid->dnodeId);
   if (pDnode == NULL) return -1;
   action.epSet = mndGetDnodeEpset(pDnode);
   mndReleaseDnode(pMnode, pDnode);
 
   int32_t contLen = 0;
-  void   *pReq = mndBuildMountVnodeReq(pMnode, pMount, pDnode, pDb, pVgroup, pMountVgroup->vgId, &contLen);
+  void   *pReq = mndBuildMountVnodeReq(pMnode, pMount, pDnode, pDstDb, pDstVgroup, pSrcVgroup->vgId, 1, &contLen);
   if (pReq == NULL) return -1;
 
   action.pCont = pReq;
@@ -343,17 +350,17 @@ int32_t mndAddMountVnodeAction(SMnode *pMnode, STrans *pTrans, SMountObj *pMount
   return 0;
 }
 
-int32_t mndAddUnMountVnodeAction(SMnode *pMnode, STrans *pTrans, SMountObj *pMount, SDbObj *pDb, SVgObj *pVgroup,
-                                 SVnodeGid *pVgid, int32_t srcVgId, bool isRedo) {
+int32_t mndAddUnMountVnodeAction(SMnode *pMnode, STrans *pTrans, SMountObj *pMount, SDbObj *pDstDb, SVgObj *pDstVgroup,
+                                 SVnodeGid *pDstVgid, int32_t srcVgId, bool isRedo) {
   STransAction action = {0};
 
-  SDnodeObj *pDnode = mndAcquireDnode(pMnode, pVgid->dnodeId);
+  SDnodeObj *pDnode = mndAcquireDnode(pMnode, pDstVgid->dnodeId);
   if (pDnode == NULL) return -1;
   action.epSet = mndGetDnodeEpset(pDnode);
   mndReleaseDnode(pMnode, pDnode);
 
   int32_t contLen = 0;
-  void   *pReq = mndBuildMountVnodeReq(pMnode, pMount, pDnode, pDb, pVgroup, srcVgId, &contLen);
+  void   *pReq = mndBuildMountVnodeReq(pMnode, pMount, pDnode, pDstDb, pDstVgroup, srcVgId, 0, &contLen);
   if (pReq == NULL) return -1;
 
   action.pCont = pReq;
@@ -376,10 +383,10 @@ int32_t mndAddUnMountVnodeAction(SMnode *pMnode, STrans *pTrans, SMountObj *pMou
   return 0;
 }
 
-static SVgObj *mndGetMountVgroupByDbAndIndex(SArray *pVgroupArray, SDbObj *pDb, int32_t indexOfDbVgroup) {
+static SVgObj *mndGetMountVgroupByDbAndIndex(SArray *pVgroups, SDbObj *pDb, int32_t indexOfDbVgroup) {
   int32_t localIndex = 0;
-  for (int32_t vg = 0; vg < (int32_t)taosArrayGetSize(pVgroupArray); ++vg) {
-    SVgObj *pVgroup = taosArrayGet(pVgroupArray, vg);
+  for (int32_t vg = 0; vg < (int32_t)taosArrayGetSize(pVgroups); ++vg) {
+    SVgObj *pVgroup = taosArrayGet(pVgroups, vg);
     if (pDb->uid == pVgroup->dbUid) {
       if (localIndex == indexOfDbVgroup) {
         return pVgroup;
@@ -423,7 +430,7 @@ static int32_t mndSetCreateMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMoun
       return -1;
     }
 
-    mInfo("mount:%s, db:%s uid:%" PRId64 " will be mounted", pMount->name, pDstDb->name, pDstDb->uid);
+    mInfo("mount:%s, db:%s uid:%" PRId64 " will be mounted, index:%d", pMount->name, pDstDb->name, pDstDb->uid, db);
     SSdbRaw *pDbRaw = mndDbActionEncode(pDstDb);
     if (pDbRaw == NULL) return -1;
     if (mndTransAppendCommitlog(pTrans, pDbRaw) != 0) return -1;
@@ -468,7 +475,7 @@ static int32_t mndSetCreateMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMoun
         return -1;
       }
 
-      if (mndAddUnMountVnodeAction(pMnode, pTrans, pMount, pDstDb, pDstVgroup, pDstVgid, pSrcVgroup->vgId, false) !=
+      if (mndAddUnMountVnodeAction(pMnode, pTrans, pMount, pDstDb, pDstVgroup, pDstVgid, pSrcVgroup->vgId, 0) !=
           0) {
         taosMemoryFree(pDstVgroups);
         return -1;
@@ -778,6 +785,19 @@ static int32_t mndCreateMount(SMnode *pMnode, SDnodeObj *pDnode, SCreateMountReq
     goto _OVER;
   }
 
+  if (taosArrayGetSize(pDbs) > 1) {
+    terrno = TSDB_CODE_MND_MOUNT_TOO_MANY_DB;
+    goto _OVER;
+  }
+
+#if 0
+  SDbObj *pDb = taosArrayGet(pDbs, 0);
+  if (strcmp(pDb->name, "tdlite") != 0) {
+    terrno = TSDB_CODE_MND_MOUNT_INVALID_DB_NAME;
+    goto _OVER;
+  }
+#endif
+
   SMountObj mountObj = {0};
   tstrncpy(mountObj.name, pCreate->mountName, TSDB_MOUNT_NAME_LEN);
   tstrncpy(mountObj.path, pCreate->mountPath, TSDB_MOUNT_PATH_LEN);
@@ -913,7 +933,7 @@ static int32_t mndProcessCreateMountReq(SRpcMsg *pReq) {
     goto _OVER;
   }
 
-  if ((terrno = grantCheck(TSDB_GRANT_USER)) != 0) {
+  if ((terrno = grantCheck(TSDB_GRANT_DB)) != 0) {
     code = terrno;
     goto _OVER;
   }
@@ -1025,6 +1045,16 @@ static int32_t mndSetDropMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMountO
   return 0;
 }
 
+static int32_t mndGetMountSrcVgId(SMountObj *pMount, int32_t dstVgId) {
+  for (int32_t i = 0; i < pMount->vgPairSize; ++i) {
+    if (pMount->vgPairs[i].dstVgId == dstVgId) {
+      return pMount->vgPairs[i].srcVgId;
+    }
+  }
+
+  return -1;
+}
+
 static int32_t mndSetDropMountRedoActions(SMnode *pMnode, STrans *pTrans, SDnodeObj *pDnode, SMountObj *pMount) {
   SSdb *pSdb = pMnode->pSdb;
   void *pIter = NULL;
@@ -1042,9 +1072,17 @@ static int32_t mndSetDropMountRedoActions(SMnode *pMnode, STrans *pTrans, SDnode
       if (pVgroup->dbUid == pDb->uid) {
         for (int32_t vn = 0; vn < pVgroup->replica; ++vn) {
           SVnodeGid *pVgid = pVgroup->vnodeGid + vn;
-          mInfo("mount:%s, vgId:%d will send unmount to dnode:%d", pMount->name, pVgroup->vgId, pVgid->dnodeId);
+          int32_t    srcVgId = mndGetMountSrcVgId(pMount, pVgroup->vgId);
+          mInfo("mount:%s, vgId:%d will send unmount to dnode:%d, src vgId:%d", pMount->name, pVgroup->vgId,
+                pVgid->dnodeId, srcVgId);
+          if (srcVgId <= 1) {
+            mInfo("mount:%s, vgId:%d failed send unmount to dnode:%d since src vgId:%d", pMount->name, pVgroup->vgId,
+                  pVgid->dnodeId, srcVgId);
+            terrno = TSDB_CODE_APP_ERROR;
+            return -1;
+          }
 
-          if (mndAddUnMountVnodeAction(pMnode, pTrans, pMount, pDb, pVgroup, pVgid, -1, true) != 0) {
+          if (mndAddUnMountVnodeAction(pMnode, pTrans, pMount, pDb, pVgroup, pVgid, srcVgId, 1) != 0) {
             sdbRelease(pSdb, pVgroup);
             sdbRelease(pSdb, pDb);
             return -1;

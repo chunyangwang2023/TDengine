@@ -491,7 +491,7 @@ int32_t vmProcessMountVnodeReq(SVnodeMgmt *pMgmt, SRpcMsg *pMsg) {
   }
 
   int32_t vgId = req.vgId;
-  dInfo("vgId:%d, mount-vnode req is received, dnode:%d mountvgId:%d, path:%s db:%s dbuid:%" PRId64, req.vgId,
+  dInfo("vgId:%d, mount-vnode req is received, dnode:%d mount vgId:%d, path:%s db:%s dbuid:%" PRId64, req.vgId,
         req.dnodeId, req.mountVgId, req.mountPath, req.db, req.dbUid);
 
   if (req.dnodeId != pMgmt->pData->dnodeId) {

@@ -332,6 +332,8 @@ TAOS_DEFINE_ERROR(TSDB_CODE_MND_INVALID_MOUNT_NAME,        "Invalid mount name")
 TAOS_DEFINE_ERROR(TSDB_CODE_MND_INVALID_MOUNT_PATH,        "Invalid mount path")
 TAOS_DEFINE_ERROR(TSDB_CODE_MND_MOUNT_SAME_CULSTER,        "Can't mount since same cluster")
 TAOS_DEFINE_ERROR(TSDB_CODE_MND_MOUNT_DB_NOT_EXIST,        "Can't mount since db not exist")
+TAOS_DEFINE_ERROR(TSDB_CODE_MND_MOUNT_TOO_MANY_DB,         "Can't mount since too mant db")
+TAOS_DEFINE_ERROR(TSDB_CODE_MND_MOUNT_INVALID_DB_NAME,     "Can't mount since invalid directory")
 TAOS_DEFINE_ERROR(TSDB_CODE_MND_MOUNT_INVALID_REPLICA,     "Can't mount since invalid replica")
 
 // vnode

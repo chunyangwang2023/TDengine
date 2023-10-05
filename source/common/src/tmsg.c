@@ -4498,6 +4498,7 @@ int32_t tSerializeSMountVnodeReq(void* buf, int32_t bufLen, SMountVnodeReq* pReq
   if (tEncodeCStr(&encoder, pReq->mountPath) < 0) return -1;
   if (tEncodeI64(&encoder, pReq->dbUid) < 0) return -1;
   if (tEncodeCStr(&encoder, pReq->db) < 0) return -1;
+  if (tEncodeI8(&encoder, pReq->isMount) < 0) return -1;
   for (int32_t i = 0; i < 16; ++i) {
     if (tEncodeI64(&encoder, pReq->reserved[i]) < 0) return -1;
   }
@@ -4519,6 +4520,7 @@ int32_t tDeserializeSMountVnodeReq(void* buf, int32_t bufLen, SMountVnodeReq* pR
   if (tDecodeCStrTo(&decoder, pReq->mountPath) < 0) return -1;
   if (tDecodeI64(&decoder, &pReq->dbUid) < 0) return -1;
   if (tDecodeCStrTo(&decoder, pReq->db) < 0) return -1;
+  if (tDecodeI8(&decoder, &pReq->isMount) < 0) return -1;
   for (int32_t i = 0; i < 16; ++i) {
     if (tDecodeI64(&decoder, &pReq->reserved[i]) < 0) return -1;
   }

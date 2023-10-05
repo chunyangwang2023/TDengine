@@ -1368,6 +1368,7 @@ typedef struct {
   char    mountPath[256];
   int64_t dbUid;
   char    db[TSDB_DB_FNAME_LEN];
+  int8_t  isMount;
   int64_t reserved[16];
 } SMountVnodeReq;
 
