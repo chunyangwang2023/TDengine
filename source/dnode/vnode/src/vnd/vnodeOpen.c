@@ -299,11 +299,17 @@ int32_t vnodeMount(int32_t vgId, SMountVnodeReq *pReq, STfs *pTfs) {
   // meta
   char srcMetaPath[TSDB_MOUNT_PATH_LEN] = {0};
   char dstMetaPath[TSDB_MOUNT_PATH_LEN] = {0};
+  char bakMetaPath[TSDB_MOUNT_PATH_LEN] = {0};
   snprintf(srcMetaPath, TSDB_FILENAME_LEN, "%s%smeta", srcPath, TD_DIRSEP);
   snprintf(dstMetaPath, TSDB_FILENAME_LEN, "%s%smeta", dstPath, TD_DIRSEP);
+  snprintf(bakMetaPath, TSDB_FILENAME_LEN, "%s%sbak_meta", dstPath, TD_DIRSEP);
 
   vInfo("vgId:%d, remove meta dir at %s", dstVgId, dstMetaPath);
-  taosRemoveDir(dstMetaPath);
+  if (taosRenameFile(dstMetaPath, bakMetaPath) != 0) {
+    terrno = TAOS_SYSTEM_ERROR(errno);
+    vError("vgId:%d, failed to remove meta dir at %s since %s", dstVgId, dstMetaPath, terrstr());
+    return -1;
+  }
 
   vInfo("vgId:%d, link meta from %s to %s", dstVgId, srcMetaPath, dstMetaPath);
   if (taosSymlink(srcMetaPath, dstMetaPath) != 0) {
@@ -313,13 +319,20 @@ int32_t vnodeMount(int32_t vgId, SMountVnodeReq *pReq, STfs *pTfs) {
     return -1;
   }
 
+  // wal
   char srcWalPath[TSDB_MOUNT_PATH_LEN] = {0};
   char dstWalPath[TSDB_MOUNT_PATH_LEN] = {0};
+  char bakWalPath[TSDB_MOUNT_PATH_LEN] = {0};
   snprintf(srcWalPath, TSDB_FILENAME_LEN, "%s%swal", srcPath, TD_DIRSEP);
   snprintf(dstWalPath, TSDB_FILENAME_LEN, "%s%swal", dstPath, TD_DIRSEP);
+  snprintf(bakWalPath, TSDB_FILENAME_LEN, "%s%sbak_wal", dstPath, TD_DIRSEP);
 
   vInfo("vgId:%d, remove wal dir at %s", dstVgId, dstWalPath);
-  taosRemoveDir(dstWalPath);
+  if (taosRenameFile(dstWalPath, bakWalPath) != 0) {
+    terrno = TAOS_SYSTEM_ERROR(errno);
+    vInfo("vgId:%d, failed to remove wal dir at %s since %s", dstVgId, dstWalPath, terrstr());
+    return -1;
+  }
 
   vInfo("vgId:%d, link wal from %s to %s", dstVgId, srcWalPath, dstWalPath);
   if (taosSymlink(srcWalPath, dstWalPath) != 0) {
@@ -328,13 +341,20 @@ int32_t vnodeMount(int32_t vgId, SMountVnodeReq *pReq, STfs *pTfs) {
     return -1;
   }
 
+  // tsdb
   char srcTsdbPath[TSDB_MOUNT_PATH_LEN] = {0};
   char dstTsdbPath[TSDB_MOUNT_PATH_LEN] = {0};
+  char bakTsdbPath[TSDB_MOUNT_PATH_LEN] = {0};
   snprintf(srcTsdbPath, TSDB_FILENAME_LEN, "%s%stsdb", srcPath, TD_DIRSEP);
   snprintf(dstTsdbPath, TSDB_FILENAME_LEN, "%s%stsdb", dstPath, TD_DIRSEP);
+  snprintf(bakTsdbPath, TSDB_FILENAME_LEN, "%s%sbak_tsdb", dstPath, TD_DIRSEP);
 
   vInfo("vgId:%d, remove tsdb dir at %s", dstVgId, dstTsdbPath);
-  taosRemoveDir(dstTsdbPath);
+  if (taosRenameFile(dstTsdbPath, bakTsdbPath) != 0) {
+    terrno = TAOS_SYSTEM_ERROR(errno);
+    vInfo("vgId:%d, failed to remove tsdb dir at %s since %s", dstVgId, dstTsdbPath, terrstr());
+    return -1;
+  }
 
   vInfo("vgId:%d, link tsdb from %s to %s", dstVgId, srcTsdbPath, dstTsdbPath);
   if (taosSymlink(srcTsdbPath, dstTsdbPath) != 0) {
@@ -343,6 +363,7 @@ int32_t vnodeMount(int32_t vgId, SMountVnodeReq *pReq, STfs *pTfs) {
     return -1;
   }
 
+  vInfo("vgId:%d, rename tsdb file from vgId:%d to vgId:%d", dstVgId, srcVgId, dstVgId);
   TdDirPtr      pDir = taosOpenDir(dstTsdbPath);
   TdDirEntryPtr de = NULL;
   if (pDir == NULL) {
@@ -363,6 +384,8 @@ int32_t vnodeMount(int32_t vgId, SMountVnodeReq *pReq, STfs *pTfs) {
       if (vnodeRenameFile(dstTsdbPath, filename, srcVgId, dstVgId) != 0) {
         terrno = TAOS_SYSTEM_ERROR(errno);
         vError("vgId:%d, failed to rename from %d to %d since %s", dstVgId, srcVgId, dstVgId, terrstr());
+        taosCloseDir(&pDir);
+        return -1;
       }
     }
   }
@@ -419,6 +442,85 @@ int32_t vnodeUnMount(int32_t vgId, SMountVnodeReq *pReq, STfs *pTfs) {
     return -1;
   }
 
+  // meta
+  char dstMetaPath[TSDB_MOUNT_PATH_LEN] = {0};
+  char bakMetaPath[TSDB_MOUNT_PATH_LEN] = {0};
+  snprintf(dstMetaPath, TSDB_FILENAME_LEN, "%s%smeta", dstPath, TD_DIRSEP);
+  snprintf(bakMetaPath, TSDB_FILENAME_LEN, "%s%sbak_meta", dstPath, TD_DIRSEP);
+
+  vInfo("vgId:%d, remove meta link at %s", dstVgId, dstMetaPath);
+  (void)taosRemoveFile(dstMetaPath);
+
+  vInfo("vgId:%d, rename meta dir from %s to %s", dstVgId, bakMetaPath, dstMetaPath);
+  if (taosRenameFile(dstMetaPath, bakMetaPath) != 0) {
+    terrno = TAOS_SYSTEM_ERROR(errno);
+    vError("vgId:%d, failed to rename meta dir from %s to %s since %s", dstVgId, bakMetaPath, dstMetaPath, terrstr());
+    // return -1;
+  }
+
+  // wal
+  char dstWalPath[TSDB_MOUNT_PATH_LEN] = {0};
+  char bakWalPath[TSDB_MOUNT_PATH_LEN] = {0};
+  snprintf(dstWalPath, TSDB_FILENAME_LEN, "%s%swal", dstPath, TD_DIRSEP);
+  snprintf(bakWalPath, TSDB_FILENAME_LEN, "%s%sbak_wal", dstPath, TD_DIRSEP);
+
+  vInfo("vgId:%d, remove wal link at %s", dstVgId, dstWalPath);
+  (void)taosRemoveFile(dstWalPath);
+
+  vInfo("vgId:%d, rename wal dir from %s to %s", dstVgId, bakWalPath, dstWalPath);
+  if (taosRenameFile(bakWalPath, dstWalPath) != 0) {
+    terrno = TAOS_SYSTEM_ERROR(errno);
+    vError("vgId:%d, failed to rename wal dir from %s to %s since %s", dstVgId, bakWalPath, dstWalPath, terrstr());
+    // return -1;
+  }
+
+  // tsdb
+  char srcTsdbPath[TSDB_MOUNT_PATH_LEN] = {0};
+  char dstTsdbPath[TSDB_MOUNT_PATH_LEN] = {0};
+  char bakTsdbPath[TSDB_MOUNT_PATH_LEN] = {0};
+  snprintf(srcTsdbPath, TSDB_FILENAME_LEN, "%s%stsdb", srcPath, TD_DIRSEP);
+  snprintf(dstTsdbPath, TSDB_FILENAME_LEN, "%s%stsdb", dstPath, TD_DIRSEP);
+  snprintf(bakTsdbPath, TSDB_FILENAME_LEN, "%s%sbak_tsdb", dstPath, TD_DIRSEP);
+
+  vInfo("vgId:%d, remove tsdb dir link at %s", dstVgId, dstTsdbPath);
+  taosRemoveFile(dstTsdbPath);
+
+  vInfo("vgId:%d, rename tsdb dir from %s to %s", dstVgId, bakTsdbPath, dstTsdbPath);
+  if (taosRenameFile(bakTsdbPath, dstTsdbPath) != 0) {
+    terrno = TAOS_SYSTEM_ERROR(errno);
+    vError("vgId:%d, failed to rename tsdb dir from %s to %s since %s", dstVgId, bakTsdbPath, dstTsdbPath, terrstr());
+    return -1;
+  }
+
+  vInfo("vgId:%d, rename tsdb file from vgId:%d to vgId:%d at %s", dstVgId, dstVgId, srcVgId, srcTsdbPath);
+  TdDirPtr      pDir = taosOpenDir(srcTsdbPath);
+  TdDirEntryPtr de = NULL;
+  if (pDir == NULL) {
+    terrno = TAOS_SYSTEM_ERROR(errno);
+    vError("vgId:%d, failed to open dir %s since %s", dstVgId, srcTsdbPath, terrstr());
+    return -1;
+  }
+
+  while ((de = taosReadDir(pDir)) != NULL) {
+    if (strcmp(taosGetDirEntryName(de), ".") == 0 || strcmp(taosGetDirEntryName(de), "..") == 0) continue;
+
+    char filename[1024] = {0};
+    snprintf(filename, sizeof(filename), "%s%s%s", srcTsdbPath, TD_DIRSEP, taosGetDirEntryName(de));
+    if (taosDirEntryIsDir(de)) {
+      vInfo("vgId:%d, found dirctory %s", dstVgId, filename);
+    } else {
+      vInfo("vgId:%d, found file %s, rename from %d to %d", dstVgId, filename, dstVgId, srcVgId);
+      if (vnodeRenameFile(srcTsdbPath, filename, dstVgId, srcVgId) != 0) {
+        terrno = TAOS_SYSTEM_ERROR(errno);
+        vError("vgId:%d, failed to rename from %d to %d since %s", dstVgId, dstVgId, srcVgId, terrstr());
+        taosCloseDir(&pDir);
+        return -1;
+      }
+    }
+  }
+
+  taosCloseDir(&pDir);
+  vInfo("vgId:%d, all file is mounted", dstVgId);
   return 0;
 }
 

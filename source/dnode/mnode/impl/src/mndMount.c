@@ -76,6 +76,11 @@ SSdbRaw *mndMountActionEncode(SMountObj *pMount) {
   for (int32_t db = 0; db < pMount->dbSize; ++db) {
     SDB_SET_INT64(pRaw, dataPos, pMount->dbUids[db], _OVER)
   }
+  SDB_SET_INT32(pRaw, dataPos, pMount->vgPairSize, _OVER)
+  for (int32_t vg = 0; vg < pMount->vgPairSize; ++vg) {
+    SDB_SET_INT32(pRaw, dataPos, pMount->vgPairs[vg].srcVgId, _OVER)
+    SDB_SET_INT32(pRaw, dataPos, pMount->vgPairs[vg].dstVgId, _OVER)
+  }
 
   SDB_SET_RESERVE(pRaw, dataPos, MOUNT_RESERVE_SIZE, _OVER)
   SDB_SET_DATALEN(pRaw, dataPos, _OVER)
@@ -122,6 +127,12 @@ static SSdbRow *mndMountActionDecode(SSdbRaw *pRaw) {
   pMount->dbUids = taosMemoryCalloc(pMount->dbSize, sizeof(int64_t));
   for (int32_t db = 0; db < pMount->dbSize; ++db) {
     SDB_GET_INT64(pRaw, dataPos, &pMount->dbUids[db], _OVER)
+  }
+  SDB_GET_INT32(pRaw, dataPos, &pMount->vgPairSize, _OVER)
+  pMount->vgPairs = taosMemoryCalloc(pMount->vgPairSize, sizeof(SMountVgPair));
+  for (int32_t vg = 0; vg < pMount->vgPairSize; ++vg) {
+    SDB_GET_INT32(pRaw, dataPos, &pMount->vgPairs[vg].srcVgId, _OVER)
+    SDB_GET_INT32(pRaw, dataPos, &pMount->vgPairs[vg].dstVgId, _OVER)
   }
 
   SDB_GET_RESERVE(pRaw, dataPos, MOUNT_RESERVE_SIZE, _OVER)
@@ -333,7 +344,7 @@ int32_t mndAddMountVnodeAction(SMnode *pMnode, STrans *pTrans, SMountObj *pMount
 }
 
 int32_t mndAddUnMountVnodeAction(SMnode *pMnode, STrans *pTrans, SMountObj *pMount, SDbObj *pDb, SVgObj *pVgroup,
-                                 SVnodeGid *pVgid, bool isRedo) {
+                                 SVnodeGid *pVgid, int32_t srcVgId, bool isRedo) {
   STransAction action = {0};
 
   SDnodeObj *pDnode = mndAcquireDnode(pMnode, pVgid->dnodeId);
@@ -342,7 +353,7 @@ int32_t mndAddUnMountVnodeAction(SMnode *pMnode, STrans *pTrans, SMountObj *pMou
   mndReleaseDnode(pMnode, pDnode);
 
   int32_t contLen = 0;
-  void   *pReq = mndBuildMountVnodeReq(pMnode, pMount, pDnode, pDb, pVgroup, -1, &contLen);
+  void   *pReq = mndBuildMountVnodeReq(pMnode, pMount, pDnode, pDb, pVgroup, srcVgId, &contLen);
   if (pReq == NULL) return -1;
 
   action.pCont = pReq;
@@ -381,127 +392,124 @@ static SVgObj *mndGetMountVgroupByDbAndIndex(SArray *pVgroupArray, SDbObj *pDb, 
   return NULL;
 }
 
-static int32_t mndSetCreateMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMountObj *pMount, SArray *pDbArray,
-                                           SArray *pVgroupArray, SArray *pStbArray) {
+static int32_t mndSetCreateMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMountObj *pMount, SArray *pSrcDbs,
+                                           SArray *pSrcVgroups, SArray *pSrcStbs) {
   SSdbRaw *pCommitRaw = mndMountActionEncode(pMount);
   if (pCommitRaw == NULL) return -1;
   if (mndTransAppendCommitlog(pTrans, pCommitRaw) != 0) return -1;
   if (sdbSetRawStatus(pCommitRaw, SDB_STATUS_READY) != 0) return -1;
 
-  for (int32_t i = 0; i < (int32_t)taosArrayGetSize(pDbArray); ++i) {
-    SDbObj *pDb = taosArrayGet(pDbArray, i);
-    char    dbname[TSDB_DB_FNAME_LEN] = {0};
-    snprintf(dbname, TSDB_DB_FNAME_LEN - 1, "%s_%s", pDb->name, pMount->name);
-    tstrncpy(pDb->name, dbname, TSDB_DB_FNAME_LEN);
+  int32_t vgPairPos = 0;
+  for (int32_t db = 0; db < (int32_t)taosArrayGetSize(pSrcDbs); ++db) {
+    SDbObj *pSrcDb = taosArrayGet(pSrcDbs, db);
+    char    dstDbName[TSDB_DB_FNAME_LEN] = {0};
+    snprintf(dstDbName, TSDB_DB_FNAME_LEN - 1, "%s_%s", pSrcDb->name, pMount->name);
 
-    SDbObj *pSameNameDb = mndAcquireDb(pMnode, dbname);
+    SDbObj *pDstDb = pSrcDb;
+    tstrncpy(pDstDb->name, dstDbName, TSDB_DB_FNAME_LEN);
+
+    SDbObj *pSameNameDb = mndAcquireDb(pMnode, pDstDb->name);
     if (pSameNameDb != NULL) {
       mError("mount:%s, db:%s failed to mount since its already exist", pMount->name, pSameNameDb->name);
       mndReleaseDb(pMnode, pSameNameDb);
       return -1;
     }
 
-    SDbObj *pSameUidDb = mndAcquireDbByUid(pMnode, pDb->uid);
+    SDbObj *pSameUidDb = mndAcquireDbByUid(pMnode, pDstDb->uid);
     if (pSameUidDb != NULL) {
-      mError("mount:%s, db:%s failed to mount since uid:%" PRId64 " already exist in db:%s", pMount->name, pDb->name,
-             pDb->uid, pSameUidDb->name);
+      mError("mount:%s, db:%s failed to mount since uid:%" PRId64 " already exist in db:%s", pMount->name, pDstDb->name,
+             pDstDb->uid, pSameUidDb->name);
       mndReleaseDb(pMnode, pSameUidDb);
       return -1;
     }
 
-    mInfo("mount:%s, db:%s uid:%" PRId64 " will be mounted", pMount->name, pDb->name, pDb->uid);
-
-    SSdbRaw *pDbRaw = mndDbActionEncode(pDb);
+    mInfo("mount:%s, db:%s uid:%" PRId64 " will be mounted", pMount->name, pDstDb->name, pDstDb->uid);
+    SSdbRaw *pDbRaw = mndDbActionEncode(pDstDb);
     if (pDbRaw == NULL) return -1;
     if (mndTransAppendCommitlog(pTrans, pDbRaw) != 0) return -1;
     if (sdbSetRawStatus(pDbRaw, SDB_STATUS_READY) != 0) return -1;
 
-    SVgObj *pVgroups = NULL;
-    if (mndAllocVgroup(pMnode, pDb, &pVgroups) != 0) {
-      mError("mount:%s, db:%s failed to mount while alloc vgroup since %s", pMount->name, pDb->name, terrstr());
+    SVgObj *pDstVgroups = NULL;
+    if (mndAllocVgroup(pMnode, pDstDb, &pDstVgroups) != 0) {
+      mError("mount:%s, db:%s failed to mount while alloc vgroup since %s", pMount->name, pDstDb->name, terrstr());
       return -1;
     }
 
-    for (int32_t vg = 0; vg < pDb->cfg.numOfVgroups; ++vg) {
-      SVgObj *pVgroup = pVgroups + vg;
-      SVgObj *pMountVgroup = mndGetMountVgroupByDbAndIndex(pVgroupArray, pDb, vg);
-      pVgroup->version = pMountVgroup->version;
+    for (int32_t vg = 0; vg < pDstDb->cfg.numOfVgroups; ++vg) {
+      SVgObj *pDstVgroup = pDstVgroups + vg;
+      SVgObj *pSrcVgroup = mndGetMountVgroupByDbAndIndex(pSrcVgroups, pDstDb, vg);
+      pDstVgroup->version = pSrcVgroup->version;
+      pMount->vgPairs[vgPairPos].srcVgId = pSrcVgroup->vgId;
+      pMount->vgPairs[vgPairPos].dstVgId = pDstVgroup->vgId;
+      vgPairPos++;
 
-      mInfo("mount:%s, vgId:%d is mounted from vgId:%d version:%d", pMount->name, pVgroup->vgId,
-            pMountVgroup->vgId, pVgroup->version);
+      mInfo("mount:%s, dst vgId:%d mounted from src vgId:%d, version:%d", pMount->name, pDstVgroup->vgId,
+            pSrcVgroup->vgId, pDstVgroup->version);
 
-      SSdbRaw *pVgRaw = mndVgroupActionEncode(pVgroup);
+      SSdbRaw *pVgRaw = mndVgroupActionEncode(pDstVgroup);
       if (pVgRaw == NULL) return -1;
       if (mndTransAppendCommitlog(pTrans, pVgRaw) != 0) {
-        taosMemoryFree(pVgroups);
+        taosMemoryFree(pDstVgroups);
         return -1;
       }
       if (sdbSetRawStatus(pVgRaw, SDB_STATUS_READY) != 0) {
-        taosMemoryFree(pVgroups);
+        taosMemoryFree(pDstVgroups);
         return -1;
       }
 
-      for (int32_t vn = 0; vn < pVgroup->replica; ++vn) {
-        SVnodeGid *pVgid = pVgroup->vnodeGid + vn;
-        if (mndAddCreateVnodeAction(pMnode, pTrans, pDb, pVgroup, pVgid) != 0) {
-          taosMemoryFree(pVgroups);
-          return -1;
-        }
+      SVnodeGid *pDstVgid = &pDstVgroup->vnodeGid[0];
+      if (mndAddCreateVnodeAction(pMnode, pTrans, pDstDb, pDstVgroup, pDstVgid) != 0) {
+        taosMemoryFree(pDstVgroups);
+        return -1;
+      }
 
-        if (mndAddMountVnodeAction(pMnode, pTrans, pMount, pDb, pVgroup, pVgid, pMountVgroup) != 0) {
-          taosMemoryFree(pVgroups);
-          return -1;
-        }
+      if (mndAddMountVnodeAction(pMnode, pTrans, pMount, pDstDb, pDstVgroup, pDstVgid, pSrcVgroup) != 0) {
+        taosMemoryFree(pDstVgroups);
+        return -1;
+      }
+
+      if (mndAddUnMountVnodeAction(pMnode, pTrans, pMount, pDstDb, pDstVgroup, pDstVgid, pSrcVgroup->vgId, false) !=
+          0) {
+        taosMemoryFree(pDstVgroups);
+        return -1;
+      }
+
+      if (mndAddDropVnodeAction(pMnode, pTrans, pDstDb, pDstVgroup, pDstVgid, false) != 0) {
+        taosMemoryFree(pDstVgroups);
+        return -1;
       }
     }
 
-    for (int32_t vg = 0; vg < pDb->cfg.numOfVgroups; ++vg) {
-      SVgObj *pVgroup = pVgroups + vg;
+    for (int32_t stb = 0; stb < (int32_t)taosArrayGetSize(pSrcDbs); ++stb) {
+      SStbObj *pSrcStb = taosArrayGet(pSrcDbs, stb);
+      SStbObj *pDstStb = pSrcStb;
+      tstrncpy(pDstStb->db, pDstDb->name, TSDB_DB_FNAME_LEN);
+      pDstStb->dbUid = pDstDb->uid;
 
-      for (int32_t vn = 0; vn < pVgroup->replica; ++vn) {
-        SVnodeGid *pVgid = pVgroup->vnodeGid + vn;
-        if (mndAddUnMountVnodeAction(pMnode, pTrans, pMount, pDb, pVgroup, pVgid, false) != 0) {
-          taosMemoryFree(pVgroups);
-          return -1;
-        }
-
-        if (mndAddDropVnodeAction(pMnode, pTrans, pDb, pVgroup, pVgid, false) != 0) {
-          taosMemoryFree(pVgroups);
-          return -1;
-        }
-      }
-    }
-
-    for (int32_t stb = 0; stb < (int32_t)taosArrayGetSize(pStbArray); ++stb) {
-      SStbObj *pStb = taosArrayGet(pStbArray, i);
-      tstrncpy(pStb->db, dbname, TSDB_DB_FNAME_LEN);
-      pStb->dbUid = pDb->uid;
-
-      SStbObj *pSameNameStb = mndAcquireStb(pMnode, pStb->name);
+      SStbObj *pSameNameStb = mndAcquireStb(pMnode, pDstStb->name);
       if (pSameNameStb != NULL) {
-        mError("mount:%s, db:%s failed to mount since stb:%s already exist", pMount->name, pDb->name,
+        mError("mount:%s, db:%s failed to mount since stb:%s already exist", pMount->name, pDstDb->name,
                pSameNameStb->name);
         mndReleaseStb(pMnode, pSameNameStb);
         return -1;
       }
 
-      SStbObj *pSameUidStb = mndAcquireStbByUid(pMnode, pStb->uid);
+      SStbObj *pSameUidStb = mndAcquireStbByUid(pMnode, pDstStb->uid);
       if (pSameUidStb != NULL) {
         mError("mount:%s, db:%s failed to mount since stb:%s uid:%" PRId64 " already exist in stb:%s", pMount->name,
-               pDb->name, pStb->name, pStb->uid, pSameUidStb->name);
+               pDstDb->name, pDstStb->name, pDstStb->uid, pSameUidStb->name);
         mndReleaseStb(pMnode, pSameNameStb);
         return -1;
       }
 
-      mInfo("mount:%s, stb:%s will be mounted, uid:%" PRId64, pMount->name, pStb->name, pStb->uid);
-
-      SSdbRaw *pStbRaw = mndStbActionEncode(pStb);
+      mInfo("mount:%s, stb:%s will be mounted, uid:%" PRId64, pMount->name, pDstStb->name, pDstStb->uid);
+      SSdbRaw *pStbRaw = mndStbActionEncode(pDstStb);
       if (pStbRaw == NULL) return -1;
       if (mndTransAppendCommitlog(pTrans, pStbRaw) != 0) return -1;
       if (sdbSetRawStatus(pStbRaw, SDB_STATUS_READY) != 0) return -1;
     }
 
-    taosMemoryFree(pVgroups);
+    taosMemoryFree(pDstVgroups);
   }
 
   if (mndAddSetMountInfoAction(pMnode, pTrans, pMount, true) != 0) {
@@ -782,6 +790,8 @@ static int32_t mndCreateMount(SMnode *pMnode, SDnodeObj *pDnode, SCreateMountReq
     SDbObj *pDb = taosArrayGet(pDbs, db);
     mountObj.dbUids[db] = pDb->uid;
   }
+  mountObj.vgPairSize = (int32_t)taosArrayGetSize(pVgrups);
+  mountObj.vgPairs = taosMemoryCalloc(mountObj.vgPairSize, sizeof(SMountVgPair));
 
   STrans *pTrans = mndTransCreate(pMnode, TRN_POLICY_ROLLBACK, TRN_CONFLICT_GLOBAL, pReq, "create-mount");
   if (pTrans == NULL) goto _OVER;
@@ -789,7 +799,6 @@ static int32_t mndCreateMount(SMnode *pMnode, SDnodeObj *pDnode, SCreateMountReq
 
   mInfo("trans:%d, used to create mount:%s", pTrans->id, pCreate->mountName);
   if (mndTrancCheckConflict(pMnode, pTrans) != 0) goto _OVER;
-
   if (mndSetCreateMountRedoLogs(pMnode, pTrans, &mountObj) != 0) goto _OVER;
   if (mndSetCreateMountUndoLogs(pMnode, pTrans, &mountObj) != 0) goto _OVER;
   if (mndSetCreateMountCommitLogs(pMnode, pTrans, &mountObj, pDbs, pVgrups, pStbs) != 0) goto _OVER;
@@ -1035,7 +1044,7 @@ static int32_t mndSetDropMountRedoActions(SMnode *pMnode, STrans *pTrans, SDnode
           SVnodeGid *pVgid = pVgroup->vnodeGid + vn;
           mInfo("mount:%s, vgId:%d will send unmount to dnode:%d", pMount->name, pVgroup->vgId, pVgid->dnodeId);
 
-          if (mndAddUnMountVnodeAction(pMnode, pTrans, pMount, pDb, pVgroup, pVgid, true) != 0) {
+          if (mndAddUnMountVnodeAction(pMnode, pTrans, pMount, pDb, pVgroup, pVgid, -1, true) != 0) {
             sdbRelease(pSdb, pVgroup);
             sdbRelease(pSdb, pDb);
             return -1;
