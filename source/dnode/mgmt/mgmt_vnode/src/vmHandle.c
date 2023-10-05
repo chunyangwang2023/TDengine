@@ -514,8 +514,7 @@ int32_t vmProcessMountVnodeReq(SVnodeMgmt *pMgmt, SRpcMsg *pMsg) {
       .vgVersion = pVnode->vgVersion,
   };
   tstrncpy(wrapperCfg.path, pVnode->path, sizeof(wrapperCfg.path));
-  vmCloseVnode(pMgmt, pVnode, false);
-  dInfo("vgId:%d, vnode is closed", vgId);
+  vmCloseVnode(pMgmt, pVnode, true);
 
   char path[TSDB_FILENAME_LEN] = {0};
   snprintf(path, TSDB_FILENAME_LEN, "vnode%svnode%d", TD_DIRSEP, vgId);
@@ -572,16 +571,39 @@ int32_t vmProcessUnMountVnodeReq(SVnodeMgmt *pMgmt, SRpcMsg *pMsg) {
     return -1;
   }
 
+  dInfo("vgId:%d, start to close vnode", vgId);
+  SWrapperCfg wrapperCfg = {
+      .dropped = pVnode->dropped,
+      .vgId = pVnode->vgId,
+      .vgVersion = pVnode->vgVersion,
+  };
+  tstrncpy(wrapperCfg.path, pVnode->path, sizeof(wrapperCfg.path));
+  vmCloseVnode(pMgmt, pVnode, true);
+
+  char path[TSDB_FILENAME_LEN] = {0};
+  snprintf(path, TSDB_FILENAME_LEN, "vnode%svnode%d", TD_DIRSEP, vgId);
+
   dInfo("vgId:%d, start to unmount vnode at %s", vgId, req.mountPath);
   if (vnodeUnMount(vgId, &req, pMgmt->pTfs) < 0) {
     dError("vgId:%d, failed to unmount vnode at %s since %s", vgId, req.mountPath, terrstr());
-    vmReleaseVnode(pMgmt, pVnode);
     return -1;
   }
 
-  vmReleaseVnode(pMgmt, pVnode);
   dInfo("vgId:%d, vnode is unmounted", vgId);
 
+  dInfo("vgId:%d, open vnode", vgId);
+  SVnode *pImpl = vnodeOpen(path, pMgmt->pTfs, pMgmt->msgCb);
+  if (pImpl == NULL) {
+    dError("vgId:%d, failed to open vnode at %s since %s", vgId, path, terrstr());
+    return -1;
+  }
+
+  if (vmOpenVnode(pMgmt, &wrapperCfg, pImpl) != 0) {
+    dError("vgId:%d, failed to open vnode mgmt since %s", vgId, terrstr());
+    return -1;
+  }
+
+  dInfo("vgId:%d, un-mount-req is processed", vgId);
   return 0;
 }
 

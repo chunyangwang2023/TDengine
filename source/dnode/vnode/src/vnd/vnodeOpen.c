@@ -261,7 +261,7 @@ int32_t vnodeMount(int32_t vgId, SMountVnodeReq *pReq, STfs *pTfs) {
   snprintf(srcPath, TSDB_MOUNT_PATH_LEN, "%s%svnode%svnode%d", pReq->mountPath, TD_DIRSEP, TD_DIRSEP, srcVgId);
   snprintf(dstPath, TSDB_MOUNT_PATH_LEN, "%s%svnode%svnode%d", tfsGetPrimaryPath(pTfs), TD_DIRSEP, TD_DIRSEP, dstVgId);
 
-  vInfo("vgId:%d, file will be mount from vgId:%d at %s, src path %s, dst path %s, ", dstVgId, srcVgId, pReq->mountPath,
+  vInfo("vgId:%d, file will be mounted from vgId:%d at %s, src path %s, dst path %s, ", dstVgId, srcVgId, pReq->mountPath,
         srcPath, dstPath);
 
   // vnodes.json
@@ -568,7 +568,7 @@ int32_t vnodeUnMount(int32_t vgId, SMountVnodeReq *pReq, STfs *pTfs) {
   }
 
   taosCloseDir(&pDir);
-  vInfo("vgId:%d, all file is mounted", dstVgId);
+  vInfo("vgId:%d, all file is unmounted", dstVgId);
   return 0;
 }
 
