@@ -79,8 +79,14 @@ static FORCE_INLINE void taosEncryptPass_c(uint8_t *inBuf, size_t len, char *tar
   memcpy(target, buf, TSDB_PASSWORD_LEN);
 }
 
+static int32_t taosGetMountTbHashVal(const char *tbname, int32_t tblen, int32_t method, int32_t prefix, int32_t suffix);
+
 static FORCE_INLINE int32_t taosGetTbHashVal(const char *tbname, int32_t tblen, int32_t method, int32_t prefix,
                                              int32_t suffix) {
+  if (method == 1) {
+    return taosGetMountTbHashVal(tbname, tblen, method, prefix, suffix);
+  }
+
   if ((prefix == 0 && suffix == 0) || (tblen <= (prefix + suffix)) || (tblen <= -1 * (prefix + suffix)) || prefix * suffix < 0) {
     return MurmurHash3_32(tbname, tblen);
   } else if (prefix > 0 || suffix > 0) {
@@ -97,6 +103,39 @@ static FORCE_INLINE int32_t taosGetTbHashVal(const char *tbname, int32_t tblen, 
       offset += -1 *suffix;
     }
     return MurmurHash3_32(tbName, offset);
+  }
+}
+
+static int32_t taosGetMountTbHashVal(const char *tbname, int32_t tblen, int32_t method, int32_t prefix,
+                                     int32_t suffix) {
+  int32_t dotPos = -1;
+  int32_t underlinePos = -1;
+  for (int32_t pos = tblen - 1; pos >= 0; --pos) {
+    if (tbname[pos] == '.' && dotPos == -1) {
+      dotPos = pos;
+      continue;
+    }
+    if (tbname[pos] == '_' && dotPos != -1 && underlinePos == -1) {
+      underlinePos = pos;
+      break;
+    }
+  }
+
+  if (underlinePos == -1) {
+    return taosGetTbHashVal(tbname, tblen, 0, prefix, suffix);
+  } else {
+    char    tbName[TSDB_TABLE_FNAME_LEN] = {0};
+    int32_t offset = dotPos - underlinePos;
+    int32_t pos = 0;
+    for (pos = 0; pos < tblen - offset; ++pos) {
+      if (pos < underlinePos) {
+        tbName[pos] = tbname[pos];
+      } else {
+        tbName[pos] = tbname[pos + offset];
+      }
+    }
+    tbName[pos] = 0;
+    return taosGetTbHashVal(tbName, pos - 1, 0, prefix, suffix);
   }
 }
 

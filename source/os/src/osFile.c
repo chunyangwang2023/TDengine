@@ -173,6 +173,14 @@ TdFilePtr taosCreateFile(const char *path, int32_t tdFileOptions) {
 
 int32_t taosRemoveFile(const char *path) { return remove(path); }
 
+int32_t taosSymlink(const char *oldpath, const char *newpath) {
+#ifdef WINDOWS
+  return -1;
+#else
+  return symlink(oldpath, newpath);
+#endif
+}
+
 int32_t taosRenameFile(const char *oldName, const char *newName) {
 #ifdef WINDOWS
   bool code = MoveFileEx(oldName, newName, MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED);

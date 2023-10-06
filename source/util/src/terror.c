@@ -321,6 +321,18 @@ TAOS_DEFINE_ERROR(TSDB_CODE_SNODE_NOT_FOUND,              "Snode not found")
 TAOS_DEFINE_ERROR(TSDB_CODE_SNODE_ALREADY_DEPLOYED,       "Snode already deployed")
 TAOS_DEFINE_ERROR(TSDB_CODE_SNODE_NOT_DEPLOYED,           "Snode not deployed")
 
+TAOS_DEFINE_ERROR(TSDB_CODE_MND_MOUNT_NOT_EXIST,           "Mount not exist")
+TAOS_DEFINE_ERROR(TSDB_CODE_MND_MOUNT_NAME_ALREADY_EXIST,  "Mount name already exist")
+TAOS_DEFINE_ERROR(TSDB_CODE_MND_MOUNT_PATH_ALREADY_EXIST,  "Mount path already exist")
+TAOS_DEFINE_ERROR(TSDB_CODE_MND_INVALID_MOUNT_NAME,        "Invalid mount name")
+TAOS_DEFINE_ERROR(TSDB_CODE_MND_INVALID_MOUNT_NAME_LINE,   "Invalid mount name (can't use _)")
+TAOS_DEFINE_ERROR(TSDB_CODE_MND_INVALID_MOUNT_PATH,        "Invalid mount path")
+TAOS_DEFINE_ERROR(TSDB_CODE_MND_MOUNT_SAME_CULSTER,        "Can't mount since same cluster")
+TAOS_DEFINE_ERROR(TSDB_CODE_MND_MOUNT_DB_NOT_EXIST,        "Can't mount since db not exist")
+TAOS_DEFINE_ERROR(TSDB_CODE_MND_MOUNT_TOO_MANY_DB,         "Can't mount since too mant db")
+TAOS_DEFINE_ERROR(TSDB_CODE_MND_MOUNT_INVALID_DB_NAME,     "Can't mount since invalid directory")
+TAOS_DEFINE_ERROR(TSDB_CODE_MND_MOUNT_INVALID_REPLICA,     "Can't mount since invalid replica")
+
 // vnode
 TAOS_DEFINE_ERROR(TSDB_CODE_VND_INVALID_VGROUP_ID,        "Vnode is closed or removed")
 TAOS_DEFINE_ERROR(TSDB_CODE_VND_NO_WRITE_AUTH,            "Database write operation denied")
@@ -562,6 +574,9 @@ TAOS_DEFINE_ERROR(TSDB_CODE_PAR_INVALID_SMA_INDEX,          "Invalid sma index")
 TAOS_DEFINE_ERROR(TSDB_CODE_PAR_INVALID_SELECTED_EXPR,      "Invalid SELECTed expression")
 TAOS_DEFINE_ERROR(TSDB_CODE_PAR_GET_META_ERROR,             "Fail to get table info")
 TAOS_DEFINE_ERROR(TSDB_CODE_PAR_NOT_UNIQUE_TABLE_ALIAS,     "Not unique table/alias")
+TAOS_DEFINE_ERROR(TSDB_CODE_PAR_MOUNT_NAME_TOO_LONG,        "Mount name too long")
+TAOS_DEFINE_ERROR(TSDB_CODE_PAR_MOUNT_PATH_TOO_LONG,        "Mount path too long")
+TAOS_DEFINE_ERROR(TSDB_CODE_PAR_MOUNT_PATH_EMPTY,           "Mount path is empty")
 TAOS_DEFINE_ERROR(TSDB_CODE_PAR_INTERNAL_ERROR,             "Parser internal error")
 
 //planner

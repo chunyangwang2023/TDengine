@@ -78,7 +78,7 @@ void dumpDb(SSdb *pSdb, SJson *json) {
     SJson *item = tjsonCreateObject();
     tjsonAddItemToObject(items, "db", item);
 
-    tjsonAddStringToObject(item, "name", mndGetDbStr(pObj->name));
+    tjsonAddStringToObject(item, "name", (pObj->name));
     tjsonAddStringToObject(item, "acct", pObj->acct);
     tjsonAddStringToObject(item, "createUser", pObj->createUser);
     tjsonAddStringToObject(item, "createdTime", i642str(pObj->createdTime));
@@ -144,8 +144,8 @@ void dumpStb(SSdb *pSdb, SJson *json) {
 
     SJson *item = tjsonCreateObject();
     tjsonAddItemToArray(items, item);
-    tjsonAddStringToObject(item, "name", mndGetStbStr(pObj->name));
-    tjsonAddStringToObject(item, "db", mndGetDbStr(pObj->db));
+    tjsonAddStringToObject(item, "name", (pObj->name));
+    tjsonAddStringToObject(item, "db", (pObj->db));
     tjsonAddStringToObject(item, "createdTime", i642str(pObj->createdTime));
     tjsonAddStringToObject(item, "updateTime", i642str(pObj->updateTime));
     tjsonAddStringToObject(item, "uid", i642str(pObj->uid));
@@ -209,10 +209,10 @@ void dumpSma(SSdb *pSdb, SJson *json) {
 
     SJson *item = tjsonCreateObject();
     tjsonAddItemToArray(items, item);
-    tjsonAddStringToObject(item, "name", mndGetStbStr(pObj->name));
-    tjsonAddStringToObject(item, "stb", mndGetStbStr(pObj->stb));
-    tjsonAddStringToObject(item, "db", mndGetDbStr(pObj->db));
-    tjsonAddStringToObject(item, "dstTbName", mndGetStbStr(pObj->dstTbName));
+    tjsonAddStringToObject(item, "name", (pObj->name));
+    tjsonAddStringToObject(item, "stb", (pObj->stb));
+    tjsonAddStringToObject(item, "db", (pObj->db));
+    tjsonAddStringToObject(item, "dstTbName", (pObj->dstTbName));
     tjsonAddStringToObject(item, "createdTime", i642str(pObj->createdTime));
     tjsonAddStringToObject(item, "uid", i642str(pObj->uid));
     tjsonAddStringToObject(item, "stbUid", i642str(pObj->stbUid));
@@ -250,7 +250,7 @@ void dumpVgroup(SSdb *pSdb, SJson *json) {
     tjsonAddStringToObject(item, "version", i642str(pObj->version));
     tjsonAddStringToObject(item, "hashBegin", i642str(pObj->hashBegin));
     tjsonAddStringToObject(item, "hashEnd", i642str(pObj->hashEnd));
-    tjsonAddStringToObject(item, "db", mndGetDbStr(pObj->dbName));
+    tjsonAddStringToObject(item, "db", (pObj->dbName));
     tjsonAddStringToObject(item, "dbUid", i642str(pObj->dbUid));
     tjsonAddStringToObject(item, "isTsma", i642str(pObj->isTsma));
     tjsonAddStringToObject(item, "replica", i642str(pObj->replica));
@@ -275,8 +275,8 @@ void dumpTopic(SSdb *pSdb, SJson *json) {
 
     SJson *item = tjsonCreateObject();
     tjsonAddItemToArray(items, item);
-    tjsonAddStringToObject(item, "name", mndGetDbStr(pObj->name));
-    tjsonAddStringToObject(item, "name", mndGetDbStr(pObj->db));
+    tjsonAddStringToObject(item, "name", (pObj->name));
+    tjsonAddStringToObject(item, "name", (pObj->db));
     tjsonAddStringToObject(item, "createTime", i642str(pObj->createTime));
     tjsonAddStringToObject(item, "updateTime", i642str(pObj->updateTime));
     tjsonAddStringToObject(item, "uid", i642str(pObj->uid));
@@ -358,7 +358,7 @@ void dumpStream(SSdb *pSdb, SJson *json) {
 
     SJson *item = tjsonCreateObject();
     tjsonAddItemToArray(items, item);
-    tjsonAddStringToObject(item, "name", mndGetDbStr(pObj->name));
+    tjsonAddStringToObject(item, "name", (pObj->name));
     tjsonAddStringToObject(item, "createTime", i642str(pObj->createTime));
     tjsonAddStringToObject(item, "updateTime", i642str(pObj->updateTime));
     tjsonAddStringToObject(item, "version", i642str(pObj->version));
@@ -372,9 +372,9 @@ void dumpStream(SSdb *pSdb, SJson *json) {
     tjsonAddStringToObject(item, "watermark", i642str(pObj->watermark));
     tjsonAddStringToObject(item, "sourceDbUid", i642str(pObj->sourceDbUid));
     tjsonAddStringToObject(item, "targetDbUid", i642str(pObj->targetDbUid));
-    tjsonAddStringToObject(item, "sourceDb", mndGetDbStr(pObj->sourceDb));
-    tjsonAddStringToObject(item, "targetDb", mndGetDbStr(pObj->targetDb));
-    tjsonAddStringToObject(item, "targetSTbName", mndGetStbStr(pObj->targetSTbName));
+    tjsonAddStringToObject(item, "sourceDb", (pObj->sourceDb));
+    tjsonAddStringToObject(item, "targetDb", (pObj->targetDb));
+    tjsonAddStringToObject(item, "targetSTbName", (pObj->targetSTbName));
     tjsonAddStringToObject(item, "targetStbUid", i642str(pObj->targetStbUid));
     tjsonAddStringToObject(item, "fixedSinkVgId", i642str(pObj->fixedSinkVgId));
     sdbRelease(pSdb, pObj);

@@ -43,6 +43,7 @@ typedef bool (*UpdateDnodeInfoFp)(void* pData, int32_t* dnodeId, int64_t* cluste
 typedef int32_t (*PutToQueueFp)(void* pMgmt, EQueueType qtype, SRpcMsg* pMsg);
 typedef int32_t (*GetQueueSizeFp)(void* pMgmt, int32_t vgId, EQueueType qtype);
 typedef int32_t (*SendReqFp)(const SEpSet* pEpSet, SRpcMsg* pMsg);
+typedef int32_t (*SendRecvFp)(SEpSet* pEpSet, SRpcMsg* pMsg, SRpcMsg* pRsp);
 typedef void (*SendRspFp)(SRpcMsg* pMsg);
 typedef void (*RegisterBrokenLinkArgFp)(SRpcMsg* pMsg);
 typedef void (*ReleaseHandleFp)(SRpcHandleInfo* pHandle, int8_t type);
@@ -55,6 +56,7 @@ typedef struct {
   PutToQueueFp            putToQueueFp;
   GetQueueSizeFp          qsizeFp;
   SendReqFp               sendReqFp;
+  SendRecvFp              sendRecvFp;
   SendRspFp               sendRspFp;
   RegisterBrokenLinkArgFp registerBrokenLinkArgFp;
   ReleaseHandleFp         releaseHandleFp;
@@ -66,6 +68,7 @@ void    tmsgSetDefault(const SMsgCb* msgcb);
 int32_t tmsgPutToQueue(const SMsgCb* msgcb, EQueueType qtype, SRpcMsg* pMsg);
 int32_t tmsgGetQueueSize(const SMsgCb* msgcb, int32_t vgId, EQueueType qtype);
 int32_t tmsgSendReq(const SEpSet* epSet, SRpcMsg* pMsg);
+int32_t tmsgSendRecv(SEpSet* epSet, SRpcMsg* pMsg, SRpcMsg* pRsp);
 void    tmsgSendRsp(SRpcMsg* pMsg);
 void    tmsgRegisterBrokenLinkArg(SRpcMsg* pMsg);
 void    tmsgReleaseHandle(SRpcHandleInfo* pHandle, int8_t type);

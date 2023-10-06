@@ -74,6 +74,8 @@ typedef enum {
   MND_OPER_SUBSCRIBE,
   MND_OPER_CREATE_TOPIC,
   MND_OPER_DROP_TOPIC,
+  MND_OPER_CREATE_MOUNT,
+  MND_OPER_DROP_MOUNT,
 } EOperType;
 
 typedef enum {
@@ -286,6 +288,23 @@ typedef struct {
   SHashObj* useDbs;
   SRWLatch  lock;
 } SUserObj;
+
+typedef struct SMountVgPair {
+  int32_t srcVgId;
+  int32_t dstVgId;
+} SMountVgPair;
+
+typedef struct {
+  char          name[TSDB_MOUNT_NAME_LEN];
+  char          path[TSDB_MOUNT_PATH_LEN];
+  int32_t       dnodeId;
+  int64_t       createdTime;
+  int64_t       updateTime;
+  int32_t       dbSize;
+  int32_t       vgPairSize;
+  int64_t*      dbUids;
+  SMountVgPair* vgPairs;
+} SMountObj;
 
 typedef struct {
   int32_t numOfVgroups;

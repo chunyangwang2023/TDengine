@@ -246,7 +246,8 @@ int32_t processUseDbRsp(void* param, SDataBuf* pMsg, int32_t code) {
   tscTrace("db:%s, usedbRsp received, numOfVgroups:%d", usedbRsp.db, usedbRsp.vgNum);
   for (int32_t i = 0; i < usedbRsp.vgNum; ++i) {
     SVgroupInfo* pInfo = taosArrayGet(usedbRsp.pVgroupInfos, i);
-    tscTrace("vgId:%d, numOfEps:%d inUse:%d ", pInfo->vgId, pInfo->epSet.numOfEps, pInfo->epSet.inUse);
+    tscTrace("vgId:%d, numOfEps:%d inUse:%d hash:[%u,%u] hashMethod:%d", pInfo->vgId, pInfo->epSet.numOfEps,
+             pInfo->epSet.inUse, pInfo->hashBegin, pInfo->hashEnd, usedbRsp.hashMethod);
     for (int32_t j = 0; j < pInfo->epSet.numOfEps; ++j) {
       tscTrace("vgId:%d, index:%d epset:%s:%u", pInfo->vgId, j, pInfo->epSet.eps[j].fqdn, pInfo->epSet.eps[j].port);
     }

@@ -188,6 +188,195 @@ static void dmGetServerRunStatus(SDnodeMgmt *pMgmt, SServerStatusRsp *pStatus) {
   taosArrayDestroy(vinfo.pVloads);
 }
 
+int32_t dmGetMountInfo(SDnodeMgmt *pMgmt, SGetMountInfoReq *pReq, SGetMountInfoRsp *pRsp) {
+  int32_t   ret = -1;
+  TdFilePtr pCfgFile = NULL;
+  TdFilePtr pJsonFile = NULL;
+  char      workdir[256] = {0};
+  char      cfgfile[256] = {0};
+  char      jsonfile[256] = {0};
+  snprintf(workdir, 256, "cd %s;", tsTempDir);
+  snprintf(cfgfile, 256, "%s/taos.cfg", tsTempDir);
+  snprintf(jsonfile, 256, "%s/sdb.json", tsTempDir);
+
+  dInfo("mount:%s, prepare env at %s cfgFile:%s jsonFile:%s", pReq->mountName, workdir, cfgfile, jsonfile);
+  pCfgFile = taosOpenFile(cfgfile, TD_FILE_CREATE | TD_FILE_WRITE | TD_FILE_TRUNC);
+  if (pCfgFile == NULL) {
+    terrno = TAOS_SYSTEM_ERROR(errno);
+    dError("failed to write %s since %s", cfgfile, terrstr());
+    goto _OVER;
+  }
+
+  char    buf[1024];
+  int32_t bufLen;
+  bufLen = snprintf(buf, 1024, "firstEp    localhost:7100 \r\n");
+  if (taosWriteFile(pCfgFile, buf, bufLen) != bufLen) goto _OVER;
+  bufLen = snprintf(buf, 1024, "fqdn       localhost \r\n");
+  if (taosWriteFile(pCfgFile, buf, bufLen) != bufLen) goto _OVER;
+  bufLen = snprintf(buf, 1024, "serverPort 7100 \r\n");
+  if (taosWriteFile(pCfgFile, buf, bufLen) != bufLen) goto _OVER;
+  bufLen = snprintf(buf, 1024, "dataDir    %s \r\n", pReq->mountPath);
+  if (taosWriteFile(pCfgFile, buf, bufLen) != bufLen) goto _OVER;
+  bufLen = snprintf(buf, 1024, "logDir     %s \r\n", tsTempDir);
+  if (taosWriteFile(pCfgFile, buf, bufLen) != bufLen) goto _OVER;
+
+  UNUSED(taosFsyncFile(pCfgFile));
+  taosCloseFile(&pCfgFile);
+
+  char dumpCmd[1024] = {0};
+  sprintf(dumpCmd, "%s %s -s -c %s", workdir, tsProcPath, cfgfile);
+  dInfo("mount:%s, execute %s", pReq->mountName, dumpCmd);
+
+  int32_t code = system(dumpCmd);
+  int32_t repeatTimes = 0;
+  while (code < 0) {
+    taosDflSignal(SIGCHLD);
+    if (repeatTimes++ >= 10) {
+      terrno = TAOS_SYSTEM_ERROR(errno);
+      dError("failed to execute %s since %s", dumpCmd, terrstr());
+      goto _OVER;
+    }
+  }
+
+  dInfo("mount:%s, open file %s", pReq->mountName, jsonfile);
+  pJsonFile = taosOpenFile(jsonfile, TD_FILE_READ);
+  if (pJsonFile == NULL) {
+    terrno = TAOS_SYSTEM_ERROR(errno);
+    dError("mount:%s, failed to read %s since %s", pReq->mountName, jsonfile, terrstr());
+    goto _OVER;
+  }
+
+  int64_t size = 0;
+  if (taosFStatFile(pJsonFile, &size, NULL) < 0) {
+    terrno = TAOS_SYSTEM_ERROR(errno);
+    dError("mount:%s, failed to fstat file:%s since %s", pReq->mountName, jsonfile, terrstr());
+    goto _OVER;
+  }
+  pRsp->jsonLen = size;
+
+  dInfo("mount:%s, file size:%" PRId64, pReq->mountName, size);
+  if (size < 128 || size > 5 * 1024 * 1024) {
+    dError("mount:%s, failed to read %s since invalid size:%d", pReq->mountName, jsonfile, pRsp->jsonLen);
+    terrno = TSDB_CODE_INVALID_JSON_FORMAT;
+    goto _OVER;
+  }
+
+  pRsp->jsonStr = taosMemoryMalloc(size + 1);
+  if (pRsp->jsonStr == NULL) {
+    terrno = TSDB_CODE_OUT_OF_MEMORY;
+    dError("mount:%s, failed to read file %s while malloc memory since %s", pReq->mountName, jsonfile, terrstr());
+    goto _OVER;
+  }
+
+  if (taosReadFile(pJsonFile, pRsp->jsonStr, size) != size) {
+    terrno = TAOS_SYSTEM_ERROR(errno);
+    dError("mount:%s, failed to read file:%s since %s", pReq->mountName, jsonfile, terrstr());
+    goto _OVER;
+  }
+  pRsp->jsonStr[size] = '\0';
+  ret = 0;
+  dInfo("mount:%s, read file finished", pReq->mountName);
+
+_OVER:
+  taosCloseFile(&pCfgFile);
+  taosCloseFile(&pJsonFile);
+  taosRemoveFile(cfgfile);
+  taosRemoveFile(jsonfile);
+
+  return ret;
+}
+
+int32_t dmProcessGetMountInfo(SDnodeMgmt *pMgmt, SRpcMsg *pMsg) {
+  SGetMountInfoReq req = {0};
+  SGetMountInfoRsp rsp = {0};
+
+  if (tDeserializeSGetMountInfoReq(pMsg->pCont, pMsg->contLen, &req) != 0) {
+    dError("failed to deserialize get-mount-info msg since %s", terrstr());
+    return -1;
+  } else {
+    dInfo("mount:%s, get-mount-info req is received, path:%s", req.mountName, req.mountPath);
+  }
+
+  if (dmGetMountInfo(pMgmt, &req, &rsp) != 0) {
+    dError("mount:%s, failed to get mount info since %s", req.mountName, terrstr());
+    return -1;
+  }
+
+  SRpcMsg rspMsg = {.info = pMsg->info};
+  int32_t rspLen = tSerializeSGetMountInfoRsp(NULL, 0, &rsp);
+  if (rspLen < 0) {
+    terrno = TSDB_CODE_OUT_OF_MEMORY;
+    return -1;
+  }
+
+  void *pRsp = rpcMallocCont(rspLen);
+  if (pRsp == NULL) {
+    terrno = TSDB_CODE_OUT_OF_MEMORY;
+    return -1;
+  }
+
+  tSerializeSGetMountInfoRsp(pRsp, rspLen, &rsp);
+  pMsg->info.rsp = pRsp;
+  pMsg->info.rspLen = rspLen;
+  return 0;
+}
+
+int32_t dmProcessSetMountInfo(SDnodeMgmt *pMgmt, SRpcMsg *pMsg) {
+  SSetMountInfoReq req = {0};
+
+  if (tDeserializeSSetMountInfoReq(pMsg->pCont, pMsg->contLen, &req) != 0) {
+    dError("failed to deserialize set-mount-info msg since %s", terrstr());
+    return -1;
+  } else {
+    dInfo("mount:%s, set-mount-info req is received, path:%s isMount:%d", req.mountName, req.mountPath, req.isMount);
+  }
+
+  char filename[TSDB_MOUNT_PATH_LEN] = {0};
+  snprintf(filename, TSDB_MOUNT_PATH_LEN, "%s%smounted", req.mountPath, TD_DIRSEP);
+
+  if (req.isMount) {
+    TdFilePtr pFile = taosOpenFile(filename, TD_FILE_CREATE | TD_FILE_WRITE | TD_FILE_TRUNC);
+    if (pFile == NULL) {
+      terrno = TAOS_SYSTEM_ERROR(errno);
+      dError("mount:%s, failed to create file:%s since %s", req.mountName, filename, terrstr());
+      return -1;
+    } else {
+      char           buf[512];
+      int32_t        bufLen;
+      int64_t        ms = taosGetTimestampMs();
+      struct tm      Tm, *ptm;
+      struct timeval timeSecs;
+      taosGetTimeOfDay(&timeSecs);
+      time_t curTime = timeSecs.tv_sec;
+      ptm = taosLocalTime(&curTime, &Tm, NULL);
+
+      dInfo("mount:%s, file:%s is created, ms:%" PRId64, req.mountName, filename, ms);
+      bufLen = snprintf(buf, sizeof(buf), "mountName    %s\r\n", req.mountName);
+      if (taosWriteFile(pFile, buf, bufLen) != bufLen) return -1;
+      bufLen = snprintf(buf, sizeof(buf), "mountPath    %s\r\n", req.mountPath);
+      if (taosWriteFile(pFile, buf, bufLen) != bufLen) return -1;
+      bufLen = snprintf(buf, sizeof(buf), "mountTimeMs  %" PRId64 "\r\n", ms);
+      if (taosWriteFile(pFile, buf, bufLen) != bufLen) return -1;
+      bufLen = sprintf(buf, "mountTimeStr %04d/%02d/%02d %02d:%02d:%02d.%06d", ptm->tm_year + 1900, ptm->tm_mon + 1,
+                       ptm->tm_mday, ptm->tm_hour, ptm->tm_min, ptm->tm_sec, (int32_t)timeSecs.tv_usec);
+      if (taosWriteFile(pFile, buf, bufLen) != bufLen) return -1;
+
+      UNUSED(taosFsyncFile(pFile));
+    }
+    taosCloseFile(&pFile);
+  } else {
+    if (taosRemoveFile(filename) == 0) {
+      dInfo("mount:%s, file:%s is removed", req.mountName, filename);
+    } else {
+      terrno = TAOS_SYSTEM_ERROR(errno);
+      dError("mount:%s, failed to remove file:%s since %s ", req.mountName, filename, terrstr());
+      return -1;
+    }
+  }
+
+  return 0;
+}
+
 int32_t dmProcessServerRunStatus(SDnodeMgmt *pMgmt, SRpcMsg *pMsg) {
   dDebug("server run status req is received");
   SServerStatusRsp statusRsp = {0};
@@ -352,6 +541,8 @@ SArray *dmGetMsgHandles() {
   if (dmSetMgmtHandle(pArray, TDMT_DND_CONFIG_DNODE, dmPutNodeMsgToMgmtQueue, 0) == NULL) goto _OVER;
   if (dmSetMgmtHandle(pArray, TDMT_DND_SERVER_STATUS, dmPutNodeMsgToMgmtQueue, 0) == NULL) goto _OVER;
   if (dmSetMgmtHandle(pArray, TDMT_DND_SYSTABLE_RETRIEVE, dmPutNodeMsgToMgmtQueue, 0) == NULL) goto _OVER;
+  if (dmSetMgmtHandle(pArray, TDMT_DND_GET_MOUNT_INFO, dmPutNodeMsgToMgmtQueue, 0) == NULL) goto _OVER;
+  if (dmSetMgmtHandle(pArray, TDMT_DND_SET_MOUNT_INFO, dmPutNodeMsgToMgmtQueue, 0) == NULL) goto _OVER;
 
   // Requests handled by MNODE
   if (dmSetMgmtHandle(pArray, TDMT_MND_GRANT, dmPutNodeMsgToMgmtQueue, 0) == NULL) goto _OVER;

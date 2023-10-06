@@ -254,6 +254,24 @@ static inline int32_t dmSendReq(const SEpSet *pEpSet, SRpcMsg *pMsg) {
   }
 }
 
+static inline int32_t dmSendRecv(SEpSet *pEpSet, SRpcMsg *pMsg, SRpcMsg *pRsp) {
+  SDnode *pDnode = dmInstance();
+  if (pDnode->status != DND_STAT_RUNNING && pMsg->msgType < TDMT_SYNC_MSG) {
+    rpcFreeCont(pMsg->pCont);
+    pMsg->pCont = NULL;
+    if (pDnode->status == DND_STAT_INIT) {
+      terrno = TSDB_CODE_APP_IS_STARTING;
+    } else {
+      terrno = TSDB_CODE_APP_IS_STOPPING;
+    }
+    dError("failed to sendrecv rpc msg:%s since %s, handle:%p", TMSG_INFO(pMsg->msgType), terrstr(), pMsg->info.handle);
+    return -1;
+  } else {
+    rpcSendRecv(pDnode->trans.clientRpc, pEpSet, pMsg, pRsp);
+    return 0;
+  }
+}
+
 static inline void dmRegisterBrokenLinkArg(SRpcMsg *pMsg) { rpcRegisterBrokenLinkArg(pMsg); }
 
 static inline void dmReleaseHandle(SRpcHandleInfo *pHandle, int8_t type) { rpcReleaseHandle(pHandle, type); }
@@ -363,6 +381,7 @@ SMsgCb dmGetMsgcb(SDnode *pDnode) {
   SMsgCb msgCb = {
       .clientRpc = pDnode->trans.clientRpc,
       .sendReqFp = dmSendReq,
+      .sendRecvFp = dmSendRecv,
       .sendRspFp = dmSendRsp,
       .registerBrokenLinkArgFp = dmRegisterBrokenLinkArg,
       .releaseHandleFp = dmReleaseHandle,

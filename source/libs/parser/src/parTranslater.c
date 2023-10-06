@@ -263,6 +263,13 @@ static const SSysTableShowAdapter sysTableShowAdapter[] = {
     .numOfShowCols = 1,
     .pShowCols = {"*"}
   },
+  {
+    .showType = QUERY_NODE_SHOW_MOUNTS_STMT,
+    .pDbName = TSDB_INFORMATION_SCHEMA_DB,
+    .pTableName = TSDB_INS_TABLE_MOUNTS,
+    .numOfShowCols = 1,
+    .pShowCols = {"*"}
+  }
 };
 // clang-format on
 
@@ -5484,6 +5491,22 @@ static int32_t translateDropUser(STranslateContext* pCxt, SDropUserStmt* pStmt) 
   return buildCmdMsg(pCxt, TDMT_MND_DROP_USER, (FSerializeFunc)tSerializeSDropUserReq, &dropReq);
 }
 
+static int32_t translateCreateMount(STranslateContext* pCxt, SCreateMountStmt* pStmt) {
+  SCreateMountReq createReq = {0};
+  strcpy(createReq.mountName, pStmt->mountName);
+  strcpy(createReq.mountPath, pStmt->mountPath);
+  createReq.mountDnodeId = pStmt->mountDnodeId;
+
+  return buildCmdMsg(pCxt, TDMT_MND_CREATE_MOUNT, (FSerializeFunc)tSerializeSCreateMountReq, &createReq);
+}
+
+static int32_t translateDropMount(STranslateContext* pCxt, SDropMountStmt* pStmt) {
+  SDropMountReq dropReq = {0};
+  strcpy(dropReq.mountName, pStmt->mountName);
+
+  return buildCmdMsg(pCxt, TDMT_MND_DROP_MOUNT, (FSerializeFunc)tSerializeSDropMountReq, &dropReq);
+}
+
 static int32_t translateCreateDnode(STranslateContext* pCxt, SCreateDnodeStmt* pStmt) {
   SCreateDnodeReq createReq = {0};
   strcpy(createReq.fqdn, pStmt->fqdn);
@@ -6936,6 +6959,12 @@ static int32_t translateQuery(STranslateContext* pCxt, SNode* pNode) {
       break;
     case QUERY_NODE_DROP_USER_STMT:
       code = translateDropUser(pCxt, (SDropUserStmt*)pNode);
+      break;
+    case QUERY_NODE_CREATE_MOUNT_STMT:
+      code = translateCreateMount(pCxt, (SCreateMountStmt*)pNode);
+      break;
+    case QUERY_NODE_DROP_MOUNT_STMT:
+      code = translateDropMount(pCxt, (SDropMountStmt*)pNode);
       break;
     case QUERY_NODE_USE_DATABASE_STMT:
       code = translateUseDatabase(pCxt, (SUseDatabaseStmt*)pNode);
@@ -8595,6 +8624,7 @@ static int32_t rewriteQuery(STranslateContext* pCxt, SQuery* pQuery) {
     case QUERY_NODE_SHOW_TABLES_STMT:
     case QUERY_NODE_SHOW_STABLES_STMT:
     case QUERY_NODE_SHOW_USERS_STMT:
+    case QUERY_NODE_SHOW_MOUNTS_STMT:
     case QUERY_NODE_SHOW_DNODES_STMT:
     case QUERY_NODE_SHOW_MNODES_STMT:
     case QUERY_NODE_SHOW_MODULES_STMT:

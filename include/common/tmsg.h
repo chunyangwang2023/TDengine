@@ -140,6 +140,7 @@ typedef enum _mgmt_table {
   TSDB_MGMT_TABLE_APPS,
   TSDB_MGMT_TABLE_STREAM_TASKS,
   TSDB_MGMT_TABLE_PRIVILEGES,
+  TSDB_MGMT_TABLE_MOUNT,
   TSDB_MGMT_TABLE_MAX,
 } EShowType;
 
@@ -640,6 +641,49 @@ typedef struct {
 
 int32_t tSerializeSConnectRsp(void* buf, int32_t bufLen, SConnectRsp* pRsp);
 int32_t tDeserializeSConnectRsp(void* buf, int32_t bufLen, SConnectRsp* pRsp);
+
+typedef struct {
+  char    mountName[TSDB_MOUNT_NAME_LEN];
+  char    mountPath[TSDB_MOUNT_PATH_LEN];
+  int32_t mountDnodeId;
+} SCreateMountReq;
+
+int32_t tSerializeSCreateMountReq(void* buf, int32_t bufLen, SCreateMountReq* pReq);
+int32_t tDeserializeSCreateMountReq(void* buf, int32_t bufLen, SCreateMountReq* pReq);
+
+typedef struct {
+  char mountName[TSDB_MOUNT_NAME_LEN];
+} SDropMountReq;
+
+int32_t tSerializeSDropMountReq(void* buf, int32_t bufLen, SDropMountReq* pReq);
+int32_t tDeserializeSDropMountReq(void* buf, int32_t bufLen, SDropMountReq* pReq);
+
+typedef struct {
+  char    mountName[TSDB_MOUNT_NAME_LEN];
+  char    mountPath[TSDB_MOUNT_PATH_LEN];
+  int32_t mountDnodeId;
+} SGetMountInfoReq;
+
+int32_t tSerializeSGetMountInfoReq(void* buf, int32_t bufLen, SGetMountInfoReq* pReq);
+int32_t tDeserializeSGetMountInfoReq(void* buf, int32_t bufLen, SGetMountInfoReq* pReq);
+
+typedef struct {
+  int32_t jsonLen;
+  char*   jsonStr;
+} SGetMountInfoRsp;
+
+int32_t tSerializeSGetMountInfoRsp(void* buf, int32_t bufLen, SGetMountInfoRsp* pRsp);
+int32_t tDeserializeSGetMountInfoRsp(void* buf, int32_t bufLen, SGetMountInfoRsp* pRsp);
+void    tFreeSGetMountInfoRsp(SGetMountInfoRsp* pRsp);
+
+typedef struct {
+  char    mountName[TSDB_MOUNT_NAME_LEN];
+  char    mountPath[TSDB_MOUNT_PATH_LEN];
+  int8_t  isMount;
+} SSetMountInfoReq;
+
+int32_t tSerializeSSetMountInfoReq(void* buf, int32_t bufLen, SSetMountInfoReq* pReq);
+int32_t tDeserializeSSetMountInfoReq(void* buf, int32_t bufLen, SSetMountInfoReq* pReq);
 
 typedef struct {
   char    user[TSDB_USER_LEN];
@@ -1316,6 +1360,20 @@ typedef struct {
 
 int32_t tSerializeSDropVnodeReq(void* buf, int32_t bufLen, SDropVnodeReq* pReq);
 int32_t tDeserializeSDropVnodeReq(void* buf, int32_t bufLen, SDropVnodeReq* pReq);
+
+typedef struct {
+  int32_t vgId;
+  int32_t dnodeId;
+  int32_t mountVgId;
+  char    mountPath[256];
+  int64_t dbUid;
+  char    db[TSDB_DB_FNAME_LEN];
+  int8_t  isMount;
+  int64_t reserved[16];
+} SMountVnodeReq;
+
+int32_t tSerializeSMountVnodeReq(void* buf, int32_t bufLen, SMountVnodeReq* pReq);
+int32_t tDeserializeSMountVnodeReq(void* buf, int32_t bufLen, SMountVnodeReq* pReq);
 
 typedef struct {
   char    colName[TSDB_COL_NAME_LEN];

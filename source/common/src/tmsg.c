@@ -1257,6 +1257,157 @@ int32_t tDeserializeSStatusRsp(void *buf, int32_t bufLen, SStatusRsp *pRsp) {
 
 void tFreeSStatusRsp(SStatusRsp *pRsp) { taosArrayDestroy(pRsp->pDnodeEps); }
 
+int32_t tSerializeSCreateMountReq(void *buf, int32_t bufLen, SCreateMountReq *pReq) {
+  SEncoder encoder = {0};
+  tEncoderInit(&encoder, buf, bufLen);
+
+  if (tStartEncode(&encoder) < 0) return -1;
+  if (tEncodeCStr(&encoder, pReq->mountName) < 0) return -1;
+  if (tEncodeCStr(&encoder, pReq->mountPath) < 0) return -1;
+  if (tEncodeI32(&encoder, pReq->mountDnodeId) < 0) return -1;
+  tEndEncode(&encoder);
+
+  int32_t tlen = encoder.pos;
+  tEncoderClear(&encoder);
+  return tlen;
+}
+
+int32_t tDeserializeSCreateMountReq(void *buf, int32_t bufLen, SCreateMountReq *pReq) {
+  SDecoder decoder = {0};
+  tDecoderInit(&decoder, buf, bufLen);
+
+  if (tStartDecode(&decoder) < 0) return -1;
+  if (tDecodeCStrTo(&decoder, pReq->mountName) < 0) return -1;
+  if (tDecodeCStrTo(&decoder, pReq->mountPath) < 0) return -1;
+  if (tDecodeI32(&decoder, &pReq->mountDnodeId) < 0) return -1;
+  tEndDecode(&decoder);
+
+  tDecoderClear(&decoder);
+  return 0;
+}
+
+int32_t tSerializeSDropMountReq(void *buf, int32_t bufLen, SDropMountReq *pReq) {
+  SEncoder encoder = {0};
+  tEncoderInit(&encoder, buf, bufLen);
+
+  if (tStartEncode(&encoder) < 0) return -1;
+  if (tEncodeCStr(&encoder, pReq->mountName) < 0) return -1;
+  tEndEncode(&encoder);
+
+  int32_t tlen = encoder.pos;
+  tEncoderClear(&encoder);
+  return tlen;
+}
+
+int32_t tDeserializeSDropMountReq(void *buf, int32_t bufLen, SDropMountReq *pReq) {
+  SDecoder decoder = {0};
+  tDecoderInit(&decoder, buf, bufLen);
+
+  if (tStartDecode(&decoder) < 0) return -1;
+  if (tDecodeCStrTo(&decoder, pReq->mountName) < 0) return -1;
+  tEndDecode(&decoder);
+
+  tDecoderClear(&decoder);
+  return 0;
+}
+
+int32_t tSerializeSGetMountInfoReq(void *buf, int32_t bufLen, SGetMountInfoReq *pReq) {
+  SEncoder encoder = {0};
+  tEncoderInit(&encoder, buf, bufLen);
+
+  if (tStartEncode(&encoder) < 0) return -1;
+  if (tEncodeCStr(&encoder, pReq->mountName) < 0) return -1;
+  if (tEncodeCStr(&encoder, pReq->mountPath) < 0) return -1;
+  if (tEncodeI32(&encoder, pReq->mountDnodeId) < 0) return -1;
+  tEndEncode(&encoder);
+
+  int32_t tlen = encoder.pos;
+  tEncoderClear(&encoder);
+  return tlen;
+}
+
+int32_t tDeserializeSGetMountInfoReq(void *buf, int32_t bufLen, SGetMountInfoReq *pReq) {
+  SDecoder decoder = {0};
+  tDecoderInit(&decoder, buf, bufLen);
+
+  if (tStartDecode(&decoder) < 0) return -1;
+  if (tDecodeCStrTo(&decoder, pReq->mountName) < 0) return -1;
+  if (tDecodeCStrTo(&decoder, pReq->mountPath) < 0) return -1;
+  if (tDecodeI32(&decoder, &pReq->mountDnodeId) < 0) return -1;
+  tEndDecode(&decoder);
+
+  tDecoderClear(&decoder);
+  return 0;
+}
+
+int32_t tSerializeSGetMountInfoRsp(void *buf, int32_t bufLen, SGetMountInfoRsp *pRsp) {
+  SEncoder encoder = {0};
+  tEncoderInit(&encoder, buf, bufLen);
+
+  if (tStartEncode(&encoder) < 0) return -1;
+  if (tEncodeI32(&encoder, pRsp->jsonLen) < 0) return -1;
+  if (tEncodeCStr(&encoder, pRsp->jsonStr) < 0) return -1;
+  tEndEncode(&encoder);
+
+  int32_t tlen = encoder.pos;
+  tEncoderClear(&encoder);
+  return tlen;
+}
+
+int32_t tDeserializeSGetMountInfoRsp(void *buf, int32_t bufLen, SGetMountInfoRsp *pRsp) {
+  SDecoder decoder = {0};
+  tDecoderInit(&decoder, buf, bufLen);
+
+  if (tStartDecode(&decoder) < 0) return -1;
+  if (tDecodeI32(&decoder, &pRsp->jsonLen) < 0) return -1;
+  
+  pRsp->jsonStr = taosMemoryCalloc(1, pRsp->jsonLen);
+  if (pRsp->jsonStr == NULL) {
+    tDecoderClear(&decoder);
+    terrno = TSDB_CODE_OUT_OF_MEMORY;
+    return -1;
+  }
+
+  if (tDecodeCStrTo(&decoder, pRsp->jsonStr) < 0) return -1;
+  tEndDecode(&decoder);
+
+  tDecoderClear(&decoder);
+  return 0;
+}
+
+void tFreeSGetMountInfoRsp(SGetMountInfoRsp *pRsp) {
+  taosMemoryFree(pRsp->jsonStr);
+}
+
+int32_t tSerializeSSetMountInfoReq(void *buf, int32_t bufLen, SSetMountInfoReq *pReq) {
+  SEncoder encoder = {0};
+  tEncoderInit(&encoder, buf, bufLen);
+
+  if (tStartEncode(&encoder) < 0) return -1;
+  if (tEncodeCStr(&encoder, pReq->mountName) < 0) return -1;
+  if (tEncodeCStr(&encoder, pReq->mountPath) < 0) return -1;
+  if (tEncodeI8(&encoder, pReq->isMount) < 0) return -1;
+  tEndEncode(&encoder);
+
+  int32_t tlen = encoder.pos;
+  tEncoderClear(&encoder);
+  return tlen;
+}
+
+int32_t tDeserializeSSetMountInfoReq(void *buf, int32_t bufLen, SSetMountInfoReq *pReq) {
+  SDecoder decoder = {0};
+  tDecoderInit(&decoder, buf, bufLen);
+
+  if (tStartDecode(&decoder) < 0) return -1;
+  if (tDecodeCStrTo(&decoder, pReq->mountName) < 0) return -1;
+  if (tDecodeCStrTo(&decoder, pReq->mountPath) < 0) return -1;
+  if (tDecodeI8(&decoder, &pReq->isMount) < 0) return -1;
+  tEndDecode(&decoder);
+
+  tDecoderClear(&decoder);
+  return 0;
+}
+
 int32_t tSerializeSCreateAcctReq(void *buf, int32_t bufLen, SCreateAcctReq *pReq) {
   SEncoder encoder = {0};
   tEncoderInit(&encoder, buf, bufLen);
@@ -4335,6 +4486,50 @@ int32_t tDeserializeSDropVnodeReq(void *buf, int32_t bufLen, SDropVnodeReq *pReq
   tDecoderClear(&decoder);
   return 0;
 }
+
+int32_t tSerializeSMountVnodeReq(void* buf, int32_t bufLen, SMountVnodeReq* pReq){
+  SEncoder encoder = {0};
+  tEncoderInit(&encoder, buf, bufLen);
+
+  if (tStartEncode(&encoder) < 0) return -1;
+  if (tEncodeI32(&encoder, pReq->vgId) < 0) return -1;
+  if (tEncodeI32(&encoder, pReq->dnodeId) < 0) return -1;
+  if (tEncodeI32(&encoder, pReq->mountVgId) < 0) return -1;
+  if (tEncodeCStr(&encoder, pReq->mountPath) < 0) return -1;
+  if (tEncodeI64(&encoder, pReq->dbUid) < 0) return -1;
+  if (tEncodeCStr(&encoder, pReq->db) < 0) return -1;
+  if (tEncodeI8(&encoder, pReq->isMount) < 0) return -1;
+  for (int32_t i = 0; i < 16; ++i) {
+    if (tEncodeI64(&encoder, pReq->reserved[i]) < 0) return -1;
+  }
+  tEndEncode(&encoder);
+
+  int32_t tlen = encoder.pos;
+  tEncoderClear(&encoder);
+  return tlen;
+}
+
+int32_t tDeserializeSMountVnodeReq(void* buf, int32_t bufLen, SMountVnodeReq* pReq) {
+  SDecoder decoder = {0};
+  tDecoderInit(&decoder, buf, bufLen);
+
+  if (tStartDecode(&decoder) < 0) return -1;
+  if (tDecodeI32(&decoder, &pReq->vgId) < 0) return -1;
+  if (tDecodeI32(&decoder, &pReq->dnodeId) < 0) return -1;
+  if (tDecodeI32(&decoder, &pReq->mountVgId) < 0) return -1;
+  if (tDecodeCStrTo(&decoder, pReq->mountPath) < 0) return -1;
+  if (tDecodeI64(&decoder, &pReq->dbUid) < 0) return -1;
+  if (tDecodeCStrTo(&decoder, pReq->db) < 0) return -1;
+  if (tDecodeI8(&decoder, &pReq->isMount) < 0) return -1;
+  for (int32_t i = 0; i < 16; ++i) {
+    if (tDecodeI64(&decoder, &pReq->reserved[i]) < 0) return -1;
+  }
+  tEndDecode(&decoder);
+
+  tDecoderClear(&decoder);
+  return 0;
+}
+
 int32_t tSerializeSDropIdxReq(void *buf, int32_t bufLen, SDropIndexReq *pReq) {
   SEncoder encoder = {0};
   tEncoderInit(&encoder, buf, bufLen);

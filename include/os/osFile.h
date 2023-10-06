@@ -101,6 +101,7 @@ int32_t taosCloseFile(TdFilePtr *ppFile);
 int32_t taosRenameFile(const char *oldName, const char *newName);
 int64_t taosCopyFile(const char *from, const char *to);
 int32_t taosRemoveFile(const char *path);
+int32_t taosSymlink(const char *oldpath, const char *newpath);
 
 void taosGetTmpfilePath(const char *inputTmpDir, const char *fileNamePrefix, char *dstPath);
 
