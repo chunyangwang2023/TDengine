@@ -4657,7 +4657,7 @@ static int32_t checkTableColsSchema(STranslateContext* pCxt, SHashObj* pHash, in
     if (code != TSDB_CODE_SUCCESS) break;
 #endif
 
-    if (pCol->dataType.type == TSDB_DATA_TYPE_JSON || pCol->dataType.type == TSDB_DATA_TYPE_NCHAR)
+    // if (pCol->dataType.type == TSDB_DATA_TYPE_JSON || pCol->dataType.type == TSDB_DATA_TYPE_NCHAR)
     if (TSDB_CODE_SUCCESS == code && pCol->dataType.type == TSDB_DATA_TYPE_JSON) {
       code = generateSyntaxErrMsg(&pCxt->msgBuf, TSDB_CODE_PAR_INVALID_COL_JSON);
     }
