@@ -413,6 +413,7 @@ static int32_t mndSetCreateMountCommitLogs(SMnode *pMnode, STrans *pTrans, SMoun
 
     SDbObj *pDstDb = pSrcDb;
     tstrncpy(pDstDb->name, dstDbName, TSDB_DB_FNAME_LEN);
+    pDstDb->cfg.hashMethod = 1;
 
     SDbObj *pSameNameDb = mndAcquireDb(pMnode, pDstDb->name);
     if (pSameNameDb != NULL) {
@@ -904,6 +905,11 @@ static int32_t mndProcessCreateMountReq(SRpcMsg *pReq) {
   }
 
   if (createReq.mountName[0] == 0) {
+    terrno = TSDB_CODE_MND_INVALID_MOUNT_NAME;
+    goto _OVER;
+  }
+
+  if (strstr(createReq.mountName, "_") != NULL) {
     terrno = TSDB_CODE_MND_INVALID_MOUNT_NAME;
     goto _OVER;
   }

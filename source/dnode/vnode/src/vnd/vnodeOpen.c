@@ -279,6 +279,7 @@ int32_t vnodeMount(int32_t vgId, SMountVnodeReq *pReq, STfs *pTfs) {
     return -1;
   }
 
+  dstInfo.config.hashMethod = 1;
   dstInfo.state = srcInfo.state;
   dstInfo.config.vndStats = srcInfo.config.vndStats;
 
@@ -449,6 +450,7 @@ int32_t vnodeUnMount(int32_t vgId, SMountVnodeReq *pReq, STfs *pTfs) {
     return -1;
   }
 
+  srcInfo.config.hashMethod = 0;
   srcInfo.state = dstInfo.state;
   srcInfo.config.vndStats = dstInfo.config.vndStats;
 
