@@ -1,0 +1,460 @@
+system sh/stop_dnodes.sh
+system sh/deploy.sh -n dnode1 -i 1
+system sh/exec.sh -n dnode1 -s start
+sql connect
+
+print ======================== dnode1 start
+
+$dbPrefix = ta_3_db
+$tbPrefix = ta_3_tb
+$mtPrefix = ta_3_mt
+$tbNum = 10
+$rowNum = 20
+$totalNum = 200
+
+print =============== step1
+$i = 0
+$db = $dbPrefix . $i
+$mt = $mtPrefix . $i
+
+sql create database $db
+sql use $db
+sql create table $mt (ts timestamp, tbcol int) TAGS(tgcol1 bool, tgcol2 int, tgcol3 float)
+
+$i = 0
+while $i < 5
+  $tb = $tbPrefix . $i
+  sql create table $tb using $mt tags( 0, 0, 0 )
+  $x = 0
+  while $x < $rowNum
+    $ms = $x . m
+    sql insert into $tb values (now + $ms , $x )
+    $x = $x + 1
+  endw
+  $i = $i + 1
+endw
+while $i < 10
+  $tb = $tbPrefix . $i
+  sql create table $tb using $mt tags( 1, 1, 1 )
+  $x = 0
+  while $x < $rowNum
+    $ms = $x . m
+    sql insert into $tb values (now + $ms , $x )
+    $x = $x + 1
+  endw
+  $i = $i + 1
+endw
+
+print =============== step2
+sql select * from $mt
+if $rows != $totalNum then
+  return -1
+endi
+
+sql select * from $mt where ts < now + 4m
+if $rows != 50 then
+  return -1
+endi
+sql select * from $mt where ts > now + 4m
+if $rows != 150 then
+  return -1
+endi
+sql select * from $mt where ts = now + 4m
+if $rows != 0 then
+  return -1
+endi
+sql select * from $mt where ts > now + 4m and ts < now + 5m
+if $rows != 10 then
+  return -1
+endi
+
+print =============== step3
+sql select * from $mt where tgcol1 = 0
+if $rows != 100 then
+  return -1
+endi
+sql select * from $mt where tgcol1 <> 0
+if $rows != 100 then
+  return -1
+endi
+sql select * from $mt where tgcol1 = 1
+if $rows != 100 then
+  return -1
+endi
+sql select * from $mt where tgcol1 <> 1
+if $rows != 100 then
+  return -1
+endi
+sql select * from $mt where tgcol1 = true
+if $rows != 100 then
+  return -1
+endi
+sql select * from $mt where tgcol1 <> true
+if $rows != 100 then
+  return -1
+endi
+sql select * from $mt where tgcol1 = false
+if $rows != 100 then
+  return -1
+endi
+sql select * from $mt where tgcol1 <> false
+if $rows != 100 then
+  return -1
+endi
+
+print =============== step4
+sql select * from $mt where tgcol2 = 0
+if $rows != 100 then
+  return -1
+endi
+sql select * from $mt where tgcol2 <> 0
+if $rows != 100 then
+  return -1
+endi
+sql select * from $mt where tgcol2 = 1
+if $rows != 100 then
+  return -1
+endi
+sql select * from $mt where tgcol2 <> 1
+if $rows != 100 then
+  return -1
+endi
+
+print =============== step5
+sql select * from $mt where tgcol3 = 0
+if $rows != 100 then
+  return -1
+endi
+sql select * from $mt where tgcol3 <> 0
+if $rows != 100 then
+  return -1
+endi
+sql select * from $mt where tgcol3 = 1
+if $rows != 100 then
+  return -1
+endi
+sql select * from $mt where tgcol3 <> 1
+if $rows != 100 then
+  return -1
+endi
+
+print =============== step6
+sql select * from $mt where ts > now + 4m and tgcol1 = true
+if $rows != 75 then
+  return -1
+endi
+sql select * from $mt where ts > now + 4m and tgcol1 <> true
+if $rows != 75 then
+  return -1
+endi
+sql select * from $mt where ts < now + 4m and tgcol1 = false
+if $rows != 25 then
+  return -1
+endi
+sql select * from $mt where ts < now + 4m and tgcol1 <> false
+if $rows != 25 then
+  return -1
+endi
+sql select * from $mt where ts <= now + 4m and tgcol1 = false
+if $rows != 25 then
+  return -1
+endi
+sql select * from $mt where ts <= now + 4m and tgcol1 <> false
+if $rows != 25 then
+  return -1
+endi
+sql select * from $mt where ts > now + 4m and ts < now + 5m and tgcol1 <> false
+if $rows != 5 then
+  return -1
+endi
+sql select * from $mt where ts > now + 4m and tgcol1 <> false and ts < now + 5m
+if $rows != 5 then
+  return -1
+endi
+
+print =============== step7
+sql select * from $mt where ts > now + 4m and tgcol2 = 1
+if $rows != 75 then
+  return -1
+endi
+sql select * from $mt where ts > now + 4m and tgcol2 <> 1
+if $rows != 75 then
+  return -1
+endi
+sql select * from $mt where ts < now + 4m and tgcol2 = 0
+if $rows != 25 then
+  return -1
+endi
+sql select * from $mt where ts < now + 4m and tgcol2 <> 0
+if $rows != 25 then
+  return -1
+endi
+sql select * from $mt where ts <= now + 4m and tgcol2 = 0
+if $rows != 25 then
+  return -1
+endi
+sql select * from $mt where ts <= now + 4m and tgcol2 <> 0
+if $rows != 25 then
+  return -1
+endi
+sql select * from $mt where ts > now + 4m and ts < now + 5m and tgcol2 <> 0
+if $rows != 5 then
+  return -1
+endi
+sql select * from $mt where ts > now + 4m and tgcol2 <> 0 and ts < now + 5m
+if $rows != 5 then
+  return -1
+endi
+
+print =============== step8
+sql select * from $mt where ts > now + 4m and tgcol3 = 1
+if $rows != 75 then
+  return -1
+endi
+sql select * from $mt where ts > now + 4m and tgcol3 <> 1
+if $rows != 75 then
+  return -1
+endi
+sql select * from $mt where ts < now + 4m and tgcol3 = 0
+if $rows != 25 then
+  return -1
+endi
+sql select * from $mt where ts < now + 4m and tgcol3 <> 0
+if $rows != 25 then
+  return -1
+endi
+sql select * from $mt where ts <= now + 4m and tgcol3 = 0
+if $rows != 25 then
+  return -1
+endi
+sql select * from $mt where ts <= now + 4m and tgcol3 <> 0
+if $rows != 25 then
+  return -1
+endi
+sql select * from $mt where ts > now + 4m and ts < now + 5m and tgcol3 <> 0
+if $rows != 5 then
+  return -1
+endi
+sql select * from $mt where ts > now + 4m and tgcol3 <> 0 and ts < now + 5m
+if $rows != 5 then
+  return -1
+endi
+
+print =============== step9
+sql select * from $mt where ts > now + 4m and tgcol2 = 1 and tgcol1 = true
+if $rows != 75 then
+  return -1
+endi
+sql select * from $mt where ts > now + 4m and tgcol2 <> 1 and tgcol1 <> true
+if $rows != 75 then
+  return -1
+endi
+sql select * from $mt where ts < now + 4m and tgcol2 = 0 and tgcol1 = false
+if $rows != 25 then
+  return -1
+endi
+sql select * from $mt where ts < now + 4m and tgcol2 <> 0 and tgcol1 <> false
+if $rows != 25 then
+  return -1
+endi
+sql select * from $mt where ts <= now + 4m and tgcol2 = 0 and tgcol1 = false
+if $rows != 25 then
+  return -1
+endi
+sql select * from $mt where ts <= now + 4m and tgcol2 <> 0 and tgcol1 <> false
+if $rows != 25 then
+  return -1
+endi
+sql select * from $mt where ts > now + 4m and ts < now + 5m and tgcol2 <> 0 and tgcol1 <> false
+if $rows != 5 then
+  return -1
+endi
+sql select * from $mt where ts > now + 4m and tgcol2 <> 0 and ts < now + 5m and ts < now + 5m and tgcol1 <> false
+if $rows != 5 then
+  return -1
+endi
+
+print =============== step10
+sql select * from $mt where ts > now + 4m and tgcol3 = 1 and tgcol1 = true
+if $rows != 75 then
+  return -1
+endi
+sql select * from $mt where ts > now + 4m and tgcol3 <> 1 and tgcol1 <> true
+if $rows != 75 then
+  return -1
+endi
+sql select * from $mt where ts < now + 4m and tgcol3 = 0 and tgcol1 = false
+if $rows != 25 then
+  return -1
+endi
+sql select * from $mt where ts < now + 4m and tgcol3 <> 0 and tgcol1 <> false
+if $rows != 25 then
+  return -1
+endi
+sql select * from $mt where ts <= now + 4m and tgcol3 = 0 and tgcol1 = false
+if $rows != 25 then
+  return -1
+endi
+sql select * from $mt where ts <= now + 4m and tgcol3 <> 0 and tgcol1 <> false
+if $rows != 25 then
+  return -1
+endi
+sql select * from $mt where ts > now + 4m and ts < now + 5m and tgcol3 <> 0 and tgcol1 <> false
+if $rows != 5 then
+  return -1
+endi
+sql select * from $mt where ts > now + 4m and tgcol3 <> 0 and ts < now + 5m and ts < now + 5m and tgcol1 <> false
+if $rows != 5 then
+  return -1
+endi
+
+print =============== step11
+sql select * from $mt where ts > now + 4m and tgcol3 = 1 and tgcol2 = 1
+if $rows != 75 then
+  return -1
+endi
+sql select * from $mt where ts > now + 4m and tgcol3 <> 1 and tgcol2 <> 1
+if $rows != 75 then
+  return -1
+endi
+sql select * from $mt where ts < now + 4m and tgcol3 = 0 and tgcol2 = 0
+if $rows != 25 then
+  return -1
+endi
+sql select * from $mt where ts < now + 4m and tgcol3 <> 0 and tgcol2 <> 0
+if $rows != 25 then
+  return -1
+endi
+sql select * from $mt where ts <= now + 4m and tgcol3 = 0 and tgcol2 = 0
+if $rows != 25 then
+  return -1
+endi
+sql select * from $mt where ts <= now + 4m and tgcol3 <> 0 and tgcol2 <> 0
+if $rows != 25 then
+  return -1
+endi
+sql select * from $mt where ts > now + 4m and ts < now + 5m and tgcol3 <> 0 and tgcol2 <> 0
+if $rows != 5 then
+  return -1
+endi
+sql select * from $mt where ts > now + 4m and tgcol3 <> 0 and ts < now + 5m and ts < now + 5m and tgcol2 <> 0
+if $rows != 5 then
+  return -1
+endi
+
+print =============== step12
+sql select * from $mt where ts > now + 4m and tgcol1 = 1 and tgcol2 = 1 and tgcol3 = 1
+if $rows != 75 then
+  return -1
+endi
+sql select * from $mt where ts > now + 4m and tgcol1 <> 1 and tgcol2 <> 1  and tgcol3 <> 1
+if $rows != 75 then
+  return -1
+endi
+sql select * from $mt where ts < now + 4m and tgcol1 = 0 and tgcol2 = 0 and tgcol3 = 0
+if $rows != 25 then
+  return -1
+endi
+sql select * from $mt where ts < now + 4m and tgcol1 <> 0 and tgcol2 <> 0 and tgcol3 <> 0
+if $rows != 25 then
+  return -1
+endi
+sql select * from $mt where ts <= now + 4m and tgcol1 = 0 and tgcol2 = 0 and tgcol3 = 0
+if $rows != 25 then
+  return -1
+endi
+sql select * from $mt where ts <= now + 4m and tgcol1 <> 0 and tgcol2 <> 0 and tgcol3 <> 0
+if $rows != 25 then
+  return -1
+endi
+sql select * from $mt where ts > now + 4m and ts < now + 5m and tgcol1 <> 0 and tgcol2 <> 0  and tgcol3 <> 0
+if $rows != 5 then
+  return -1
+endi
+sql select * from $mt where ts > now + 4m and tgcol1 <> 0 and ts < now + 5m and ts < now + 5m and tgcol2 <> 0  and tgcol3 <> 0
+if $rows != 5 then
+  return -1
+endi
+
+print =============== step13
+sql select count(tbcol), avg(tbcol), sum(tbcol), min(tbcol), max(tbcol), first(tbcol), last(tbcol) from $mt
+print $data00 $data01 $data02 $data03 $data04 $data05 $data06
+if $data00 != 200 then
+  return -1
+endi
+
+system sh/exec.sh -n dnode1 -s stop -x SIGINT
+
+print ------------------------------- start mount
+system rm -rf /root/dnode1 
+system mv /root/TDengine/sim/dnode1 /root/
+
+system sh/stop_dnodes.sh
+system sh/deploy.sh -n dnode1 -i 1
+system sh/exec.sh -n dnode1 -s start
+sql connect
+
+$i = 0
+while $i < 5
+
+    print step mount $i
+    
+    sql create mount m1 on dnode 1 from '/root/dnode1/data'
+    sql_error create mount m1 on dnode 1 from '/root/dnode1/data'
+    sql_error create mount m2 on dnode 1 from '/root/dnode1/data'
+    sql_error create mount m1 on dnode 1 from '/root/dnode1/'
+    sql_error create mount m4 on dnode 2 from '/root/dnode1/data'
+    
+    sql show mounts;
+    if $rows != 1 then
+      return -1
+    endi
+
+    sql show databases;
+    if $rows != 3 then
+      return -1
+    endi
+
+    sql select * from ta_3_db0_m1.ta_3_mt0
+    if $rows != 200 then
+      return -1
+    endi
+
+    sql select * from ta_3_db0_m1.ta_3_tb0
+    if $rows != 20 then
+      return -1
+    endi
+
+    sql select * from ta_3_db0_m1.ta_3_tb1
+    if $rows != 20 then
+      return -1
+    endi
+
+    sql select * from ta_3_db0_m1.ta_3_tb2
+    if $rows != 20 then
+      return -1
+    endi
+
+    sql select * from ta_3_db0_m1.ta_3_tb3
+    if $rows != 20 then
+      return -1
+    endi
+
+    sql select * from ta_3_db0_m1.ta_3_tb4
+    if $rows != 20 then
+      return -1
+    endi
+
+    sql select * from ta_3_db0_m1.ta_3_tb5
+    if $rows != 20 then
+      return -1
+    endi
+
+    sql drop mount m1
+    sql show mounts;
+    if $rows != 0 then
+      return -1
+    endi
+
+  $i = $i + 1
+endw
