@@ -143,7 +143,7 @@ static void* loop(void* arg) {
   int         ret;
 
 #if defined(TD_MC)
-  setThreadName("mc-commit");
+  setThreadName("commit");
 #else
   setThreadName("vnode-commit");
 #endif

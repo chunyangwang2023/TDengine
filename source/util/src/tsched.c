@@ -130,9 +130,13 @@ void *taosProcessSchedQueue(void *scheduler) {
   SSchedQueue *pSched = (SSchedQueue *)scheduler;
   int32_t      ret = 0;
 
+#if defined(TD_MC)
+  setThreadName("taskQ");
+#else
   char name[16] = {0};
   snprintf(name, tListLen(name), "%s-taskQ", pSched->label);
   setThreadName(name);
+#endif
 
   while (1) {
     if ((ret = tsem_wait(&pSched->fullSem)) != 0) {

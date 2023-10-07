@@ -247,7 +247,7 @@ static void *mndThreadFp(void *param) {
   SMnode *pMnode = param;
   int64_t lastTime = 0;
 #if defined(TD_MC)
-  setThreadName("mc-timer");
+  setThreadName("timer");
 #else
   setThreadName("mnode-timer");
 #endif
