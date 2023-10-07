@@ -35,7 +35,10 @@ extern "C" {
 #include <libgen.h>
 #include <sched.h>
 #include <unistd.h>
+
+#ifndef _TD_SYLIXOS_
 #include <wordexp.h>
+#endif
 
 #include <sys/ioctl.h>
 #include <sys/mman.h>
@@ -51,8 +54,12 @@ extern "C" {
 
 #if defined(DARWIN)
 #else
+
+#ifndef _TD_SYLIXOS_
 #include <argp.h>
 #include <sys/prctl.h>
+#endif
+
 #if defined(_TD_X86_)
 #include <cpuid.h>
 #endif

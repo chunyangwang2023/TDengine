@@ -739,7 +739,6 @@ expression(A) ::= literal(B).                                                   
 expression(A) ::= pseudo_column(B).                                               { A = B; }
 expression(A) ::= column_reference(B).                                            { A = B; }
 expression(A) ::= function_expression(B).                                         { A = B; }
-expression(A) ::= case_when_expression(B).                                        { A = B; }
 expression(A) ::= NK_LP(B) expression(C) NK_RP(D).                                { A = createRawExprNodeExt(pCxt, &B, &D, releaseRawExprNode(pCxt, C)); }
 expression(A) ::= NK_PLUS(B) expr_or_subquery(C).                                 {
                                                                                     SToken t = getTokenFromRawExprNode(pCxt, C);
@@ -955,12 +954,9 @@ table_reference_list(A) ::= table_reference_list(B) NK_COMMA table_reference(C).
 
 /************************************************ table_reference *****************************************************/
 table_reference(A) ::= table_primary(B).                                          { A = B; }
-table_reference(A) ::= joined_table(B).                                           { A = B; }
 
 table_primary(A) ::= table_name(B) alias_opt(C).                                  { A = createRealTableNode(pCxt, NULL, &B, &C); }
 table_primary(A) ::= db_name(B) NK_DOT table_name(C) alias_opt(D).                { A = createRealTableNode(pCxt, &B, &C, &D); }
-table_primary(A) ::= subquery(B) alias_opt(C).                                    { A = createTempTableNode(pCxt, releaseRawExprNode(pCxt, B), &C); }
-table_primary(A) ::= parenthesized_joined_table(B).                               { A = B; }
 
 %type alias_opt                                                                   { SToken }
 %destructor alias_opt                                                             { }
@@ -968,8 +964,6 @@ alias_opt(A) ::= .                                                              
 alias_opt(A) ::= table_alias(B).                                                  { A = B; }
 alias_opt(A) ::= AS table_alias(B).                                               { A = B; }
 
-parenthesized_joined_table(A) ::= NK_LP joined_table(B) NK_RP.                    { A = B; }
-parenthesized_joined_table(A) ::= NK_LP parenthesized_joined_table(B) NK_RP.      { A = B; }
 
 /************************************************ joined_table ********************************************************/
 joined_table(A) ::=
@@ -983,17 +977,9 @@ join_type(A) ::= INNER.                                                         
 /************************************************ query_specification *************************************************/
 query_specification(A) ::=
   SELECT set_quantifier_opt(B) select_list(C) from_clause_opt(D) 
-  where_clause_opt(E) partition_by_clause_opt(F) range_opt(J) every_opt(K) 
-  fill_opt(L) twindow_clause_opt(G) group_by_clause_opt(H) having_clause_opt(I).  { 
+  where_clause_opt(E) .  { 
                                                                                     A = createSelectStmt(pCxt, B, C, D);
                                                                                     A = addWhereClause(pCxt, A, E);
-                                                                                    A = addPartitionByClause(pCxt, A, F);
-                                                                                    A = addWindowClauseClause(pCxt, A, G);
-                                                                                    A = addGroupByClause(pCxt, A, H);
-                                                                                    A = addHavingClause(pCxt, A, I);
-                                                                                    A = addRangeClause(pCxt, A, J);
-                                                                                    A = addEveryClause(pCxt, A, K);
-                                                                                    A = addFillClause(pCxt, A, L);
                                                                                   }
 
 %type set_quantifier_opt                                                          { bool }
@@ -1061,13 +1047,9 @@ fill_mode(A) ::= NEXT.                                                          
 
 %type group_by_clause_opt                                                         { SNodeList* }
 %destructor group_by_clause_opt                                                   { nodesDestroyList($$); }
-group_by_clause_opt(A) ::= .                                                      { A = NULL; }
-group_by_clause_opt(A) ::= GROUP BY group_by_list(B).                             { A = B; }
 
 %type group_by_list                                                               { SNodeList* }
 %destructor group_by_list                                                         { nodesDestroyList($$); }
-group_by_list(A) ::= expr_or_subquery(B).                                         { A = createNodeList(pCxt, createGroupingSetNode(pCxt, releaseRawExprNode(pCxt, B))); }
-group_by_list(A) ::= group_by_list(B) NK_COMMA expr_or_subquery(C).               { A = addNodeToList(pCxt, B, createGroupingSetNode(pCxt, releaseRawExprNode(pCxt, C))); }
 
 having_clause_opt(A) ::= .                                                        { A = NULL; }
 having_clause_opt(A) ::= HAVING search_condition(B).                              { A = B; }
@@ -1081,19 +1063,12 @@ every_opt(A) ::= EVERY NK_LP duration_literal(B) NK_RP.                         
 
 /************************************************ query_expression ****************************************************/
 query_expression(A) ::= query_simple(B) 
-  order_by_clause_opt(C) slimit_clause_opt(D) limit_clause_opt(E).                {
+  order_by_clause_opt(C) limit_clause_opt(E).                {
                                                                                     A = addOrderByClause(pCxt, B, C);
-                                                                                    A = addSlimitClause(pCxt, A, D);
                                                                                     A = addLimitClause(pCxt, A, E);
                                                                                   }
 
 query_simple(A) ::= query_specification(B).                                       { A = B; }
-query_simple(A) ::= union_query_expression(B).                                    { A = B; }
-
-union_query_expression(A) ::=
-  query_simple_or_subquery(B) UNION ALL query_simple_or_subquery(C).              { A = createSetOperator(pCxt, SET_OP_TYPE_UNION_ALL, B, C); }
-union_query_expression(A) ::=
-  query_simple_or_subquery(B) UNION query_simple_or_subquery(C).                  { A = createSetOperator(pCxt, SET_OP_TYPE_UNION, B, C); }
 
 query_simple_or_subquery(A) ::= query_simple(B).                                  { A = B; }
 query_simple_or_subquery(A) ::= subquery(B).                                      { A = releaseRawExprNode(pCxt, B); }

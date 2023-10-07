@@ -48,8 +48,11 @@ int32_t mndInitFunc(SMnode *pMnode) {
       .deleteFp = (SdbDeleteFp)mndFuncActionDelete,
   };
 
+#if !defined(TD_MC)
   mndSetMsgHandle(pMnode, TDMT_MND_CREATE_FUNC, mndProcessCreateFuncReq);
   mndSetMsgHandle(pMnode, TDMT_MND_DROP_FUNC, mndProcessDropFuncReq);
+#endif
+
   mndSetMsgHandle(pMnode, TDMT_MND_RETRIEVE_FUNC, mndProcessRetrieveFuncReq);
 
   mndAddShowRetrieveHandle(pMnode, TSDB_MGMT_TABLE_FUNC, mndRetrieveFuncs);

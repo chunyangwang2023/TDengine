@@ -265,7 +265,8 @@ int64_t taosGetLineCmd(TdCmdPtr pCmd, char** __restrict ptrBuf) {
   if (*ptrBuf != NULL) {
     taosMemoryFreeClear(*ptrBuf);
   }
-#ifdef WINDOWS
+
+#if defined(WINDOWS) || defined(_TD_SYLIXOS_)
   *ptrBuf = taosMemoryMalloc(1024);
   if (*ptrBuf == NULL) return -1;
   if (fgets(*ptrBuf, 1023, (FILE*)pCmd) == NULL) {

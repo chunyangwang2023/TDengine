@@ -69,7 +69,6 @@ static void *tQWorkerThreadFp(SQueueWorker *worker) {
   SQWorkerPool *pool = worker->pool;
   SQueueInfo    qinfo = {0};
   void         *msg = NULL;
-  int32_t       code = 0;
 
   taosBlockSIGPIPE();
   setThreadName(pool->name);
@@ -181,7 +180,6 @@ static void *tAutoQWorkerThreadFp(SQueueWorker *worker) {
   SAutoQWorkerPool *pool = worker->pool;
   SQueueInfo        qinfo = {0};
   void             *msg = NULL;
-  int32_t           code = 0;
 
   taosBlockSIGPIPE();
   setThreadName(pool->name);
@@ -318,8 +316,6 @@ void tWWorkerCleanup(SWWorkerPool *pool) {
 static void *tWWorkerThreadFp(SWWorker *worker) {
   SWWorkerPool *pool = worker->pool;
   SQueueInfo    qinfo = {0};
-  void         *msg = NULL;
-  int32_t       code = 0;
   int32_t       numOfMsgs = 0;
 
   taosBlockSIGPIPE();

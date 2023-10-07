@@ -1,5 +1,14 @@
 aux_source_directory(src TRANSPORT_SRC)
+IF (${TD_BUILD_MC})
+  list(REMOVE_ITEM TRANSPORT_SRC src/thttp.c)
+  list(REMOVE_ITEM TRANSPORT_SRC src/trans.c)
+  list(REMOVE_ITEM TRANSPORT_SRC src/transCli.c)
+  list(REMOVE_ITEM TRANSPORT_SRC src/transComm.c)
+  list(REMOVE_ITEM TRANSPORT_SRC src/transSvr.c)
+  list(APPEND TRANSPORT_SRC src/mc/transMc.c)
+ENDIF ()
 add_library(transport STATIC ${TRANSPORT_SRC})
+
 target_include_directories(
     transport
     PUBLIC "${TD_SOURCE_DIR}/include/libs/transport"

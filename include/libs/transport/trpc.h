@@ -59,6 +59,11 @@ typedef struct SRpcHandleInfo {
   STraceId traceId;
 
   SRpcConnInfo conn;
+
+#if defined(TD_MC)
+  int32_t msgType;
+  void   *ctx;
+#endif
 } SRpcHandleInfo;
 
 typedef struct SRpcMsg {

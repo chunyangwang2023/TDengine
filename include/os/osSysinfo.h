@@ -67,6 +67,11 @@ void    taosSetCoreDump(bool enable);
 
 #endif
 
+#if defined(_TD_SYLIXOS_)
+#define _UTSNAME_LENGTH         65
+#define _UTSNAME_MACHINE_LENGTH _UTSNAME_LENGTH
+#endif
+
 typedef struct {
   char sysname[_UTSNAME_MACHINE_LENGTH];
   char nodename[_UTSNAME_MACHINE_LENGTH];

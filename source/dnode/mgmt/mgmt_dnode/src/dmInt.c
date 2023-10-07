@@ -17,6 +17,7 @@
 #include "dmInt.h"
 
 static int32_t dmStartMgmt(SDnodeMgmt *pMgmt) {
+#if !defined(TD_MC)
   if (dmStartStatusThread(pMgmt) != 0) {
     return -1;
   }
@@ -26,14 +27,17 @@ static int32_t dmStartMgmt(SDnodeMgmt *pMgmt) {
   if (dmStartCrashReportThread(pMgmt) != 0) {
     return -1;
   }
+#endif
   return 0;
 }
 
 static void dmStopMgmt(SDnodeMgmt *pMgmt) {
   pMgmt->pData->stopped = true;
+#if !defined(TD_MC)
   dmStopMonitorThread(pMgmt);
   dmStopStatusThread(pMgmt);
   dmStopCrashReportThread(pMgmt);
+#endif
 }
 
 static int32_t dmOpenMgmt(SMgmtInputOpt *pInput, SMgmtOutputOpt *pOutput) {

@@ -155,12 +155,14 @@ static void *taosCacheTimedRefresh(void *handle);
 static void doInitRefreshThread(void) {
   pCacheArrayList = taosArrayInit(4, POINTER_BYTES);
 
+#if !defined(TD_MC)
   TdThreadAttr thattr;
   taosThreadAttrInit(&thattr);
   taosThreadAttrSetDetachState(&thattr, PTHREAD_CREATE_JOINABLE);
 
   taosThreadCreate(&cacheRefreshWorker, &thattr, taosCacheTimedRefresh, NULL);
   taosThreadAttrDestroy(&thattr);
+#endif
 }
 
 TdThread doRegisterCacheObj(SCacheObj *pCacheObj) {
@@ -680,9 +682,9 @@ void taosCacheCleanup(SCacheObj *pCacheObj) {
   if (pCacheObj == NULL) {
     return;
   }
-
   pCacheObj->deleting = 1;
 
+#if !defined(TD_MC)
   // wait for the refresh thread quit before destroying the cache object.
   // But in the dll, the child thread will be killed before atexit takes effect.
   while (atomic_load_8(&pCacheObj->deleting) != 0) {
@@ -690,6 +692,7 @@ void taosCacheCleanup(SCacheObj *pCacheObj) {
     if (refreshWorkerUnexpectedStopped) return;
     taosMsleep(50);
   }
+#endif
 
   uTrace("cache:%s will be cleaned up", pCacheObj->name);
   doCleanupDataCache(pCacheObj);
@@ -813,24 +816,10 @@ void taosCacheRefreshWorkerUnexpectedStopped(void) {
   }
 }
 
-void *taosCacheTimedRefresh(void *handle) {
-  uDebug("cache refresh thread starts");
-  setThreadName("cacheRefresh");
+void taosCacheTimedRefreshLoop() {
+  static int64_t count = 0;
 
-  const int32_t SLEEP_DURATION = 500;  // 500 ms
-  int64_t       count = 0;
-#ifdef WINDOWS
-  if (taosCheckCurrentInDll()) {
-    atexit(taosCacheRefreshWorkerUnexpectedStopped);
-  }
-#endif
-
-  while (1) {
-    taosMsleep(SLEEP_DURATION);
-    if (stopRefreshWorker) {
-      goto _end;
-    }
-
+  {
     taosThreadMutexLock(&guard);
     size_t size = taosArrayGetSize(pCacheArrayList);
     taosThreadMutexUnlock(&guard);
@@ -882,8 +871,9 @@ void *taosCacheTimedRefresh(void *handle) {
       taosTrashcanEmpty(pCacheObj, false);
     }
   }
+}
 
-_end:
+void taosCacheTimedRefreshLoopEnd() {
   taosArrayDestroy(pCacheArrayList);
 
   pCacheArrayList = NULL;
@@ -891,6 +881,27 @@ _end:
   refreshWorkerNormalStopped = true;
 
   uDebug("cache refresh thread quits");
+}
+
+void *taosCacheTimedRefresh(void *handle) {
+  uDebug("cache refresh thread starts");
+  setThreadName("cacheRefresh");
+
+  const int32_t SLEEP_DURATION = 500;  // 500 ms
+
+#ifdef WINDOWS
+  if (taosCheckCurrentInDll()) {
+    atexit(taosCacheRefreshWorkerUnexpectedStopped);
+  }
+#endif
+
+  while (1) {
+    taosMsleep(SLEEP_DURATION);
+    if (stopRefreshWorker) break;
+    taosCacheTimedRefreshLoop();
+  }
+
+  taosCacheTimedRefreshLoopEnd();
   return NULL;
 }
 
@@ -904,10 +915,14 @@ void taosCacheRefresh(SCacheObj *pCacheObj, __cache_trav_fn_t fp, void *param1) 
 }
 
 void taosStopCacheRefreshWorker(void) {
+#if !defined(TD_MC)
   stopRefreshWorker = true;
   TdThreadOnce tmp = PTHREAD_ONCE_INIT;
   if (memcmp(&cacheThreadInit, &tmp, sizeof(TdThreadOnce)) != 0) taosThreadJoin(cacheRefreshWorker, NULL);
   taosArrayDestroy(pCacheArrayList);
+#else
+  taosCacheTimedRefreshLoopEnd();
+#endif
 }
 
 size_t taosCacheGetNumOfObj(const SCacheObj *pCacheObj) { return pCacheObj->numOfElems + pCacheObj->numOfElemsInTrash; }

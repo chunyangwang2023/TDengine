@@ -522,6 +522,7 @@ void tscWriteCrashInfo(int signum, void *sigInfo, void *context) {
 }
 
 void taos_init_imp(void) {
+#if !defined(TD_MC)
 #if defined(LINUX)
   if (tscDbg.memEnable) {
     int32_t code = taosMemoryDbgInit();
@@ -537,6 +538,8 @@ void taos_init_imp(void) {
   // In the APIs of other program language, taos_cleanup is not available yet.
   // So, to make sure taos_cleanup will be invoked to clean up the allocated resource to suppress the valgrind warning.
   atexit(taos_cleanup);
+#endif
+
   errno = TSDB_CODE_SUCCESS;
   taosSeedRand(taosGetTimestampSec());
 
@@ -552,6 +555,8 @@ void taos_init_imp(void) {
 #else
   snprintf(logDirName, 64, "taoslog");
 #endif
+
+#if !defined(TD_MC)
   if (taosCreateLog(logDirName, 10, configDir, NULL, NULL, NULL, NULL, 1) != 0) {
     // ignore create log failed, only print
     printf(" WARING: Create %s failed:%s. configDir=%s\n", logDirName, strerror(errno), configDir);
@@ -561,6 +566,7 @@ void taos_init_imp(void) {
     tscInitRes = -1;
     return;
   }
+#endif
 
   initQueryModuleMsgHandle();
 

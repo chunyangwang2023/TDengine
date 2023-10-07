@@ -830,6 +830,10 @@ static void *hbThreadFunc(void *param) {
 }
 
 static int32_t hbCreateThread() {
+#if defined(TD_MC)
+  return 0;
+#endif
+
   TdThreadAttr thAttr;
   taosThreadAttrInit(&thAttr);
   taosThreadAttrSetDetachState(&thAttr, PTHREAD_CREATE_JOINABLE);
@@ -850,6 +854,10 @@ static void hbStopThread() {
     tscDebug("hb thread already stopped");
     return;
   }
+
+#if defined(TD_MC)
+  return;
+#endif
 
   // thread quit mode kill or inner exit from self-thread
   if (clientHbMgr.quitByKill) {

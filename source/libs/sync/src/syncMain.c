@@ -504,11 +504,15 @@ SSyncState syncGetState(int64_t rid) {
   if (pSyncNode != NULL) {
     state.state = pSyncNode->state;
     state.restored = pSyncNode->restoreFinish;
+#if defined(TD_MC)
+    state.canRead = state.restored;
+#else
     if (pSyncNode->vgId != 1) {
       state.canRead = syncNodeIsReadyForRead(pSyncNode);
     } else {
       state.canRead = state.restored;
     }
+#endif
     syncNodeRelease(pSyncNode);
   }
 
@@ -571,8 +575,12 @@ int32_t syncNodePropose(SSyncNode* pSyncNode, SRpcMsg* pMsg, bool isWeak, int64_
     return -1;
   }
 
-  // not restored, vnode enable
+  // not restored, vnode enable、
+#if defined(TD_MC)
+  if (!pSyncNode->restoreFinish) {
+#else
   if (!pSyncNode->restoreFinish && pSyncNode->vgId != 1) {
+#endif
     terrno = TSDB_CODE_SYN_PROPOSE_NOT_READY;
     sNError(pSyncNode, "failed to sync propose since not ready, type:%s, last:%" PRId64 ", cmt:%" PRId64,
             TMSG_INFO(pMsg->msgType), syncNodeGetLastIndex(pSyncNode), pSyncNode->commitIndex);
@@ -1193,6 +1201,10 @@ ESyncStrategy syncNodeStrategy(SSyncNode* pSyncNode) { return pSyncNode->raftCfg
 
 // timer control --------------
 int32_t syncNodeStartPingTimer(SSyncNode* pSyncNode) {
+#if defined(TD_SLIX)
+  return 0;
+#endif
+
   int32_t ret = 0;
   if (syncIsInit()) {
     taosTmrReset(pSyncNode->FpPingTimerCB, pSyncNode->pingTimerMS, pSyncNode, syncEnv()->pTimerManager,
@@ -1205,6 +1217,10 @@ int32_t syncNodeStartPingTimer(SSyncNode* pSyncNode) {
 }
 
 int32_t syncNodeStopPingTimer(SSyncNode* pSyncNode) {
+#if defined(TD_SLIX)
+  return 0;
+#endif
+
   int32_t ret = 0;
   atomic_add_fetch_64(&pSyncNode->pingTimerLogicClockUser, 1);
   taosTmrStop(pSyncNode->pPingTimer);
@@ -1213,6 +1229,10 @@ int32_t syncNodeStopPingTimer(SSyncNode* pSyncNode) {
 }
 
 int32_t syncNodeStartElectTimer(SSyncNode* pSyncNode, int32_t ms) {
+#if defined(TD_SLIX)
+  return 0;
+#endif
+
   int32_t ret = 0;
   if (syncIsInit()) {
     pSyncNode->electTimerMS = ms;
@@ -1233,6 +1253,10 @@ int32_t syncNodeStartElectTimer(SSyncNode* pSyncNode, int32_t ms) {
 }
 
 int32_t syncNodeStopElectTimer(SSyncNode* pSyncNode) {
+#if defined(TD_SLIX)
+  return 0;
+#endif
+
   int32_t ret = 0;
   atomic_add_fetch_64(&pSyncNode->electTimerLogicClock, 1);
   taosTmrStop(pSyncNode->pElectTimer);
@@ -1242,6 +1266,10 @@ int32_t syncNodeStopElectTimer(SSyncNode* pSyncNode) {
 }
 
 int32_t syncNodeRestartElectTimer(SSyncNode* pSyncNode, int32_t ms) {
+#if defined(TD_SLIX)
+  return 0;
+#endif
+
   int32_t ret = 0;
   syncNodeStopElectTimer(pSyncNode);
   syncNodeStartElectTimer(pSyncNode, ms);
@@ -1249,6 +1277,10 @@ int32_t syncNodeRestartElectTimer(SSyncNode* pSyncNode, int32_t ms) {
 }
 
 void syncNodeResetElectTimer(SSyncNode* pSyncNode) {
+#if defined(TD_SLIX)
+  return 0;
+#endif
+
   int32_t electMS;
 
   if (pSyncNode->raftCfg.isStandBy) {
@@ -1278,6 +1310,10 @@ static int32_t syncNodeDoStartHeartbeatTimer(SSyncNode* pSyncNode) {
 }
 
 int32_t syncNodeStartHeartbeatTimer(SSyncNode* pSyncNode) {
+#if defined(TD_SLIX)
+  return 0;
+#endif
+
   int32_t ret = 0;
 
 #if 0
@@ -1296,6 +1332,10 @@ int32_t syncNodeStartHeartbeatTimer(SSyncNode* pSyncNode) {
 }
 
 int32_t syncNodeStopHeartbeatTimer(SSyncNode* pSyncNode) {
+#if defined(TD_SLIX)
+  return 0;
+#endif
+
   int32_t ret = 0;
 
 #if 0
@@ -1315,6 +1355,10 @@ int32_t syncNodeStopHeartbeatTimer(SSyncNode* pSyncNode) {
 }
 
 int32_t syncNodeRestartHeartbeatTimer(SSyncNode* pSyncNode) {
+  #if defined(TD_SLIX)
+  return 0;
+#endif
+
   syncNodeStopHeartbeatTimer(pSyncNode);
   syncNodeStartHeartbeatTimer(pSyncNode);
   return 0;
@@ -1969,6 +2013,10 @@ int32_t syncNodeGetPreIndexTerm(SSyncNode* pSyncNode, SyncIndex index, SyncIndex
 static void syncNodeEqPingTimer(void* param, void* tmrId) {
   if (!syncIsInit()) return;
 
+#if defined(TD_MC)
+  return;
+#endif
+
   SSyncNode* pNode = param;
   if (atomic_load_64(&pNode->pingTimerLogicClockUser) <= atomic_load_64(&pNode->pingTimerLogicClock)) {
     SRpcMsg rpcMsg = {0};
@@ -2038,6 +2086,10 @@ static void syncNodeEqElectTimer(void* param, void* tmrId) {
 static void syncNodeEqHeartbeatTimer(void* param, void* tmrId) {
   if (!syncIsInit()) return;
 
+#if defined(TD_MC)
+  return;
+#endif
+
   SSyncNode* pNode = param;
   if (pNode->replicaNum > 1) {
     if (atomic_load_64(&pNode->heartbeatTimerLogicClockUser) <= atomic_load_64(&pNode->heartbeatTimerLogicClock)) {
@@ -2069,6 +2121,10 @@ static void syncNodeEqHeartbeatTimer(void* param, void* tmrId) {
 }
 
 static void syncNodeEqPeerHeartbeatTimer(void* param, void* tmrId) {
+#if defined(TD_MC)
+  return;
+#endif
+
   int64_t hbDataRid = (int64_t)param;
   int64_t tsNow = taosGetTimestampMs();
 
@@ -2524,7 +2580,11 @@ int32_t syncNodeUpdateNewConfigIndex(SSyncNode* ths, SSyncCfg* pNewCfg) {
 }
 
 bool syncNodeIsOptimizedOneReplica(SSyncNode* ths, SRpcMsg* pMsg) {
+#if defined(TD_MC)
+  return true;
+#else
   return (ths->replicaNum == 1 && syncUtilUserCommit(pMsg->msgType) && ths->vgId != 1);
+#endif
 }
 
 bool syncNodeInRaftGroup(SSyncNode* ths, SRaftId* pRaftId) {

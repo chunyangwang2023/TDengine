@@ -1080,8 +1080,9 @@ int32_t schBuildAndSendMsg(SSchJob *pJob, SSchTask *pTask, SQueryNodeAddr *addr,
     }
     case TDMT_SCH_QUERY:
     case TDMT_SCH_MERGE_QUERY: {
+#if !defined(TD_MC)
       SCH_ERR_RET(schMakeQueryRpcCtx(pJob, pTask, &rpcCtx));
-
+#endif
       SSubQueryMsg qMsg;
       qMsg.header.vgId = addr->nodeId;
       qMsg.header.contLen = 0;
@@ -1178,8 +1179,9 @@ int32_t schBuildAndSendMsg(SSchJob *pJob, SSchTask *pTask, SQueryNodeAddr *addr,
       break;
     }
     case TDMT_SCH_QUERY_HEARTBEAT: {
+#if !defined(TD_MC)      
       SCH_ERR_RET(schMakeHbRpcCtx(pJob, pTask, &rpcCtx));
-
+#endif
       SSchedulerHbReq req = {0};
       req.sId = schMgmt.sId;
       req.header.vgId = addr->nodeId;

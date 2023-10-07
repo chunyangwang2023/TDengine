@@ -1,5 +1,10 @@
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/version.c.in" "${CMAKE_CURRENT_SOURCE_DIR}/src/version.c")
 aux_source_directory(src UTIL_SRC)
+IF (${TD_BUILD_MC})
+  list(REMOVE_ITEM UTIL_SRC src/ttimer.c)
+  list(APPEND UTIL_SRC src/mc/ttimerMc.c)
+ENDIF ()
+
 add_library(util STATIC ${UTIL_SRC})
 if (DEFINED GRANT_CFG_INCLUDE_DIR)
   add_definitions(-DGRANTS_CFG)

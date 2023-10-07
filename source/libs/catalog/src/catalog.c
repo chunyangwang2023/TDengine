@@ -1622,7 +1622,11 @@ void catalogDestroy(void) {
 
   if (!taosCheckCurrentInDll()) {
     ctgClearCacheEnqueue(NULL, true, true, true);
+#if !defined(TD_MC)
     taosThreadJoin(gCtgMgmt.updateThread, NULL);
+#else
+    // ctgCleanupCacheQueue();
+#endif
   }
 
   taosHashCleanup(gCtgMgmt.pCluster);

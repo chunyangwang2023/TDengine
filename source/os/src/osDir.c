@@ -77,11 +77,56 @@ typedef struct TdDir {
 
 #else
 
+#ifdef _TD_SYLIXOS_
+
+void wordfree(wordexp_t *pwordexp) {}
+
+int wordexp(const char *words, wordexp_t *pwordexp, int flags) {
+  pwordexp->we_offs = 0;
+  pwordexp->we_wordc = 1;
+  pwordexp->we_wordv = (char **)(pwordexp->wordPos);
+  pwordexp->we_wordv[0] = (char *)words;
+  return 0;
+}
+
+int sendfile(int out_fd, int in_fd, off_t *offset, size_t size)
+{
+    char buf[8192];
+    int readn = size > sizeof(buf) ? sizeof(buf) : size;
+
+    int ret;
+    //带偏移量地原子的从文件中读取数据
+    int n = pread(in_fd, buf, readn, *offset);
+
+    if (n > 0)
+    {
+        ret = write(out_fd, buf, n);
+        if (ret < 0)
+        {
+            perror("write() failed.");
+        }
+        else
+        {
+            *offset += ret;
+        }
+        return ret;
+    }
+    else
+    {
+        perror("pread() failed.");
+        return -1;
+    }
+}
+#endif
+
 #include <dirent.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+
+#ifndef _TD_SYLIXOS_
 #include <wordexp.h>
+#endif
 
 typedef struct dirent dirent;
 typedef struct DIR    TdDir;
@@ -408,13 +453,13 @@ TdDirPtr taosOpenDir(const char *dirname) {
   }
 
 #ifdef WINDOWS
-  char   szFind[MAX_PATH];  //这是要找的
+  char   szFind[MAX_PATH];
   HANDLE hFind;
 
   TdDirPtr pDir = taosMemoryMalloc(sizeof(TdDir));
 
   strcpy(szFind, dirname);
-  strcat(szFind, "\\*.*");  //利用通配符找这个目录下的所以文件，包括目录
+  strcat(szFind, "\\*.*");
 
   pDir->hFind = FindFirstFile(szFind, &(pDir->dirEntry.findFileData));
   if (INVALID_HANDLE_VALUE == pDir->hFind) {

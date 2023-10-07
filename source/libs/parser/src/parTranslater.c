@@ -2415,11 +2415,13 @@ static int32_t setVnodeSysTableVgroupList(STranslateContext* pCxt, SName* pName,
     ((SSelectStmt*)pCxt->pCurrStmt)->isEmptyResult = true;
   }
 
+#if !defined(TD_MC)
   if (TSDB_CODE_SUCCESS == code &&
           (0 == strcmp(pRealTable->table.tableName, TSDB_INS_TABLE_TABLES) && !hasUserDbCond) ||
       0 == strcmp(pRealTable->table.tableName, TSDB_INS_TABLE_COLS)) {
     code = addMnodeToVgroupList(&pCxt->pParseCxt->mgmtEpSet, &pVgs);
   }
+#endif
 
   if (TSDB_CODE_SUCCESS == code) {
     code = toVgroupsInfo(pVgs, &pRealTable->pVgroupList);
@@ -2621,6 +2623,10 @@ static int32_t translateTable(STranslateContext* pCxt, SNode* pTable) {
   switch (nodeType(pTable)) {
     case QUERY_NODE_REAL_TABLE: {
       SRealTableNode* pRealTable = (SRealTableNode*)pTable;
+#if defined(TD_MC)
+      code = mcCheckDbTable(pRealTable->table.dbName, pRealTable->table.tableName);
+      if (code != TSDB_CODE_SUCCESS) break;
+#endif
       pRealTable->ratio = (NULL != pCxt->pExplainOpt ? pCxt->pExplainOpt->ratio : 1.0);
       // The SRealTableNode created through ROLLUP already has STableMeta.
       if (NULL == pRealTable->pMeta) {
@@ -4596,6 +4602,10 @@ static int32_t checkTableTagsSchema(STranslateContext* pCxt, SHashObj* pHash, SN
         code = generateSyntaxErrMsg(&pCxt->msgBuf, TSDB_CODE_PAR_INVALID_VAR_COLUMN_LEN);
       }
     }
+#if defined(TD_MC)
+    code = mcCheckCol(pTag->dataType.type);
+    if (code != TSDB_CODE_SUCCESS) break;
+#endif
     if (TSDB_CODE_SUCCESS == code) {
       code = taosHashPut(pHash, pTag->colName, len, &pTag, POINTER_BYTES);
     }
@@ -4634,6 +4644,13 @@ static int32_t checkTableColsSchema(STranslateContext* pCxt, SHashObj* pHash, in
         code = generateSyntaxErrMsg(&pCxt->msgBuf, TSDB_CODE_PAR_INVALID_FIRST_COLUMN);
       }
     }
+
+#if defined(TD_MC)
+    code = mcCheckCol(pCol->dataType.type);
+    if (code != TSDB_CODE_SUCCESS) break;
+#endif
+
+    if (pCol->dataType.type == TSDB_DATA_TYPE_JSON || pCol->dataType.type == TSDB_DATA_TYPE_NCHAR)
     if (TSDB_CODE_SUCCESS == code && pCol->dataType.type == TSDB_DATA_TYPE_JSON) {
       code = generateSyntaxErrMsg(&pCxt->msgBuf, TSDB_CODE_PAR_INVALID_COL_JSON);
     }
@@ -8490,6 +8507,13 @@ static void destoryAlterTbReq(SVAlterTbReq* pReq) {
 
 static int32_t rewriteAlterTableImpl(STranslateContext* pCxt, SAlterTableStmt* pStmt, STableMeta* pTableMeta,
                                      SQuery* pQuery) {
+#if defined(TD_MC)
+  if (TSDB_CHILD_TABLE != pTableMeta->tableType) {
+    terrno = TSDB_CODE_OPS_NOT_SUPPORT;
+    return terrno;
+  }
+#endif
+
   if (TSDB_SUPER_TABLE == pTableMeta->tableType) {
     return TSDB_CODE_SUCCESS;
   } else if (TSDB_CHILD_TABLE != pTableMeta->tableType && TSDB_NORMAL_TABLE != pTableMeta->tableType) {
@@ -8788,6 +8812,12 @@ int32_t translate(SParseContext* pParseCxt, SQuery* pQuery, SParseMetaCache* pMe
   STranslateContext cxt = {0};
 
   int32_t code = initTranslateContext(pParseCxt, pMetaCache, &cxt);
+#if defined(TD_MC)
+  if (TSDB_CODE_SUCCESS == code) {
+    code = mcCheckQuery(pParseCxt, pQuery);
+  }
+#endif
+
   if (TSDB_CODE_SUCCESS == code) {
     code = rewriteQuery(&cxt, pQuery);
   }

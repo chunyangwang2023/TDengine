@@ -126,12 +126,15 @@ static FORCE_INLINE void taosUpdateDaylight() {
 static FORCE_INLINE int32_t taosGetDaylight() { return tsDaylightActive; }
 
 static int32_t taosStartLog() {
-  TdThreadAttr threadAttr;
-  taosThreadAttrInit(&threadAttr);
-  if (taosThreadCreate(&(tsLogObj.logHandle->asyncThread), &threadAttr, taosAsyncOutputLog, tsLogObj.logHandle) != 0) {
-    return -1;
+  if (tsAsyncLog) {
+    TdThreadAttr threadAttr;
+    taosThreadAttrInit(&threadAttr);
+    if (taosThreadCreate(&(tsLogObj.logHandle->asyncThread), &threadAttr, taosAsyncOutputLog, tsLogObj.logHandle) !=
+        0) {
+      return -1;
+    }
+    taosThreadAttrDestroy(&threadAttr);
   }
-  taosThreadAttrDestroy(&threadAttr);
   return 0;
 }
 
@@ -163,9 +166,11 @@ static void taosStopLog() {
 void taosCloseLog() {
   if (tsLogObj.logHandle != NULL) {
     taosStopLog();
-    if (tsLogObj.logHandle != NULL && taosCheckPthreadValid(tsLogObj.logHandle->asyncThread)) {
-      taosThreadJoin(tsLogObj.logHandle->asyncThread, NULL);
-      taosThreadClear(&tsLogObj.logHandle->asyncThread);
+    if (tsAsyncLog) {
+      if (tsLogObj.logHandle != NULL && taosCheckPthreadValid(tsLogObj.logHandle->asyncThread)) {
+        taosThreadJoin(tsLogObj.logHandle->asyncThread, NULL);
+        taosThreadClear(&tsLogObj.logHandle->asyncThread);
+      }
     }
     tsLogInited = 0;
 
@@ -492,6 +497,12 @@ void taosPrintLog(const char *flags, ELogLevel level, int32_t dflag, const char 
   if (writeLen > LOG_MAX_LINE_SIZE) writeLen = LOG_MAX_LINE_SIZE;
   buffer[writeLen++] = '\n';
   buffer[writeLen] = 0;
+
+#if defined(TD_MC)
+  if (flags[0] != 'S' || flags[1] != 'I' || flags[2] != 'M') {
+    dflag = dflag & (~((int32_t)DEBUG_SCREEN));
+  }
+#endif
 
   taosPrintLogImp(level, dflag, buffer, writeLen);
 

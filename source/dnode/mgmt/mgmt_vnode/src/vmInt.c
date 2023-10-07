@@ -100,6 +100,7 @@ void vmCloseVnode(SVnodeMgmt *pMgmt, SVnodeObj *pVnode, bool commitAndRemoveWal)
         pVnode->pWriteW.queue->threadId);
   tMultiWorkerCleanup(&pVnode->pWriteW);
 
+#if !defined(TD_MC)
   dInfo("vgId:%d, wait for vnode sync queue:%p is empty, thread:%08" PRId64, pVnode->vgId, pVnode->pSyncW.queue,
         pVnode->pSyncW.queue->threadId);
   tMultiWorkerCleanup(&pVnode->pSyncW);
@@ -111,6 +112,7 @@ void vmCloseVnode(SVnodeMgmt *pMgmt, SVnodeObj *pVnode, bool commitAndRemoveWal)
   dInfo("vgId:%d, wait for vnode apply queue:%p is empty, thread:%08" PRId64, pVnode->vgId, pVnode->pApplyW.queue,
         pVnode->pApplyW.queue->threadId);
   tMultiWorkerCleanup(&pVnode->pApplyW);
+#endif
 
   dInfo("vgId:%d, wait for vnode query queue:%p is empty", pVnode->vgId, pVnode->pQueryQ);
   while (!taosQueueEmpty(pVnode->pQueryQ)) taosMsleep(10);
@@ -120,8 +122,11 @@ void vmCloseVnode(SVnodeMgmt *pMgmt, SVnodeObj *pVnode, bool commitAndRemoveWal)
   while (!taosQueueEmpty(pVnode->pFetchQ)) taosMsleep(10);
 
   tqNotifyClose(pVnode->pImpl->pTq);
+
+#if !defined(TD_MC)
   dInfo("vgId:%d, wait for vnode stream queue:%p is empty", pVnode->vgId, pVnode->pStreamQ);
   while (!taosQueueEmpty(pVnode->pStreamQ)) taosMsleep(10);
+#endif
 
   dInfo("vgId:%d, all vnode queues is empty", pVnode->vgId);
 
@@ -286,7 +291,9 @@ static void *vmCloseVnodeInThread(void *param) {
 
 static void vmCloseVnodes(SVnodeMgmt *pMgmt) {
   dInfo("start to close all vnodes");
+#if !defined(TD_MC)
   tSingleWorkerCleanup(&pMgmt->mgmtWorker);
+#endif
   dInfo("vnodes mgmt worker is stopped");
 
   int32_t     numOfVnodes = 0;
@@ -394,6 +401,10 @@ static void *vmThreadFp(void *param) {
 }
 
 static int32_t vmInitTimer(SVnodeMgmt *pMgmt) {
+#if defined(TD_MC)
+  return 0;
+#endif
+
   TdThreadAttr thAttr;
   taosThreadAttrInit(&thAttr);
   taosThreadAttrSetDetachState(&thAttr, PTHREAD_CREATE_JOINABLE);
@@ -408,6 +419,11 @@ static int32_t vmInitTimer(SVnodeMgmt *pMgmt) {
 
 static void vmCleanupTimer(SVnodeMgmt *pMgmt) {
   pMgmt->stop = true;
+
+#if defined(TD_MC)
+  return;
+#endif
+
   if (taosCheckPthreadValid(pMgmt->thread)) {
     taosThreadJoin(pMgmt->thread, NULL);
     taosThreadClear(&pMgmt->thread);

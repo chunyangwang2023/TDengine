@@ -260,7 +260,7 @@ static void walUpdateSeq() {
   atomic_add_fetch_32(&tsWal.seq, 1);
 }
 
-static void walFsyncAll() {
+void walFsyncAll() {
   SWal *pWal = taosIterateRef(tsWal.refSetId, 0);
   while (pWal) {
     if (walNeedFsync(pWal)) {
@@ -289,6 +289,7 @@ static void *walThreadFunc(void *param) {
 }
 
 static int32_t walCreateThread() {
+#if !defined(TD_MC)
   TdThreadAttr thAttr;
   taosThreadAttrInit(&thAttr);
   taosThreadAttrSetDetachState(&thAttr, PTHREAD_CREATE_JOINABLE);
@@ -301,11 +302,12 @@ static int32_t walCreateThread() {
 
   taosThreadAttrDestroy(&thAttr);
   wDebug("wal thread is launched, thread:0x%08" PRIx64, taosGetPthreadId(tsWal.thread));
-
+#endif
   return 0;
 }
 
 static void walStopThread() {
+#if !defined(TD_MC)
   atomic_store_8(&tsWal.stop, 1);
 
   if (taosCheckPthreadValid(tsWal.thread)) {
@@ -314,4 +316,5 @@ static void walStopThread() {
   }
 
   wDebug("wal thread is stopped");
+#endif
 }

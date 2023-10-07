@@ -5,7 +5,12 @@ add_subdirectory(mgmt_qnode)
 add_subdirectory(mgmt_snode)
 add_subdirectory(mgmt_vnode)
 add_subdirectory(mgmt_dnode)
-add_subdirectory(test)
+
+if(${BUILD_TEST})
+  add_subdirectory(test)
+endif()
+
+IF(NOT ${TD_BUILD_MC})
 
 aux_source_directory(exe EXEC_SRC)
 add_executable(taosd ${EXEC_SRC})
@@ -28,3 +33,4 @@ ELSE ()
     target_link_libraries(taosd dnode)
 ENDIF ()
 
+ENDIF()

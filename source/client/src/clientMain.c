@@ -82,8 +82,11 @@ void taos_cleanup(void) {
   taosConvDestroy();
 
   tscInfo("all local resources released");
+
+#if !defined(TD_MC)
   taosCleanupCfg();
   taosCloseLog();
+#endif
 }
 
 static setConfRet taos_set_config_imp(const char *config) {

@@ -109,12 +109,14 @@ LONG WINAPI exceptionHandler(LPEXCEPTION_POINTERS exception);
 
 #else
 
+#ifndef _TD_SYLIXOS_
 #include <argp.h>
 #include <linux/sysctl.h>
+#include <sys/syscall.h>
+#endif
 #include <sys/file.h>
 #include <sys/resource.h>
 #include <sys/statvfs.h>
-#include <sys/syscall.h>
 #include <sys/utsname.h>
 #include <unistd.h>
 
@@ -129,7 +131,13 @@ static void taosGetProcIOnfos() {
   tsPageSizeKB = sysconf(_SC_PAGESIZE) / 1024;
   tsOpenMax = sysconf(_SC_OPEN_MAX);
   tsStreamMax = TMAX(sysconf(_SC_STREAM_MAX), 0);
+
+#ifdef _TD_SYLIXOS_
+  tsProcId = (pid_t)getpid();
+#else
   tsProcId = (pid_t)syscall(SYS_gettid);
+#endif
+
 
   snprintf(tsProcMemFile, sizeof(tsProcMemFile), "/proc/%d/status", tsProcId);
   snprintf(tsProcCpuFile, sizeof(tsProcCpuFile), "/proc/%d/stat", tsProcId);
@@ -885,10 +893,10 @@ int32_t taosGetSystemUUID(char *uid, int32_t uidlen) {
   // it's caller's responsibility to make enough space for `uid`, that's 36-char + 1-null
   uuid_unparse_lower(uuid, buf);
   int n = snprintf(uid, uidlen, "%.*s", (int)sizeof(buf), buf);  // though less performance, much safer
-  if (n >= uidlen) {
-    // target buffer is too small
-    return -1;
-  }
+  // if (n >= uidlen) {
+  //   // target buffer is too small
+  //   return -1;
+  // }
   return 0;
 #else
   int len = 0;
@@ -947,6 +955,11 @@ char *taosGetCmdlineByPID(int pid) {
   return cmdline;
 #endif
 }
+
+#ifdef _TD_SYLIXOS_
+
+void taosSetCoreDump(bool enable) {}
+#else
 
 void taosSetCoreDump(bool enable) {
   if (!enable) return;
@@ -1031,6 +1044,8 @@ void taosSetCoreDump(bool enable) {
 #endif
 #endif
 }
+
+#endif
 
 SysNameInfo taosGetSysNameInfo() {
 #ifdef WINDOWS

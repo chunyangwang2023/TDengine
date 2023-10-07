@@ -114,14 +114,14 @@ static int32_t dmStartNodes(SDnode *pDnode) {
   return 0;
 }
 
-static void dmStopNodes(SDnode *pDnode) {
+void dmStopNodes(SDnode *pDnode) {
   for (EDndNodeType n = DNODE; n < NODE_END; ++n) {
     SMgmtWrapper *pWrapper = &pDnode->wrappers[n];
     dmStopNode(pWrapper);
   }
 }
 
-static void dmCloseNodes(SDnode *pDnode) {
+void dmCloseNodes(SDnode *pDnode) {
   for (EDndNodeType n = DNODE; n < NODE_END; ++n) {
     SMgmtWrapper *pWrapper = &pDnode->wrappers[n];
     dmCloseNode(pWrapper);
@@ -144,12 +144,14 @@ int32_t dmRunDnode(SDnode *pDnode) {
     return -1;
   }
 
+#if defined(TD_MC)
+    dmSendStatusReq(pDnode->wrappers[DNODE].pMgmt);
+    return 0;
+#endif
+
   while (1) {
     if (pDnode->stop) {
       dInfo("The daemon is about to stop");
-      dmSetStatus(pDnode, DND_STAT_STOPPED);
-      dmStopNodes(pDnode);
-      dmCloseNodes(pDnode);
       return 0;
     }
 
@@ -162,4 +164,6 @@ int32_t dmRunDnode(SDnode *pDnode) {
     
     taosMsleep(100);
   }
+
+  return 0;
 }

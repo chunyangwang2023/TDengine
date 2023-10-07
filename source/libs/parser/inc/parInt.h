@@ -34,6 +34,9 @@ int32_t authenticate(SParseContext* pParseCxt, SQuery* pQuery, SParseMetaCache* 
 int32_t translate(SParseContext* pParseCxt, SQuery* pQuery, SParseMetaCache* pMetaCache);
 int32_t extractResultSchema(const SNode* pRoot, int32_t* numOfCols, SSchema** pSchema);
 int32_t calculateConstant(SParseContext* pParseCxt, SQuery* pQuery);
+int32_t mcCheckQuery(SParseContext* pParseCxt, SQuery* pQuery);
+int32_t mcCheckCol(int32_t type);
+int32_t mcCheckDbTable(const char* db, const char *table);
 
 #ifdef __cplusplus
 }

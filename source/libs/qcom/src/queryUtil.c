@@ -100,7 +100,11 @@ static SSchedQueue pTaskQueue = {0};
 
 int32_t initTaskQueue() {
   int32_t queueSize = tsMaxShellConns * 2;
+#if defined(TD_MC)
+  void *p = taosInitScheduler(queueSize, tsNumOfTaskQueueThreads, "mc", &pTaskQueue);
+#else
   void *p = taosInitScheduler(queueSize, tsNumOfTaskQueueThreads, "tsc", &pTaskQueue);
+#endif
   if (NULL == p) {
     qError("failed to init task queue");
     return -1;
@@ -112,6 +116,7 @@ int32_t initTaskQueue() {
 
 int32_t cleanupTaskQueue() {
   taosCleanUpScheduler(&pTaskQueue);
+  memset(&pTaskQueue, 0, sizeof(SSchedQueue));
   return 0;
 }
 
@@ -177,6 +182,11 @@ int32_t asyncSendMsgToServerExt(void* pTransporter, SEpSet* epSet, int64_t* pTra
   if (code) {
     destroySendMsgInfo(pInfo);
   }
+#if defined(TD_MC)
+  if (code == 0 && rpcMsg.msgType == TDMT_SCH_DROP_TASK) {
+    destroySendMsgInfo(pInfo);
+  }
+#endif
   return code;
 }
 

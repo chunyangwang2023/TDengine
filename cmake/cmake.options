@@ -130,7 +130,6 @@ option(
     off 
 )
 
-
 option(
     BUILD_WITH_NURAFT
     "If build with NuRaft" 

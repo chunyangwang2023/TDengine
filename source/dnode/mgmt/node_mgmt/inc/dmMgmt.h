@@ -16,9 +16,6 @@
 #ifndef _TD_DND_MGMT_H_
 #define _TD_DND_MGMT_H_
 
-// tobe deleted
-#include "uv.h"
-
 #include "dmInt.h"
 
 #ifdef __cplusplus
@@ -55,27 +52,12 @@ typedef struct {
   char desc[TSDB_STEP_DESC_LEN];
 } SStartupInfo;
 
-typedef struct SUdfdData {
-  bool         startCalled;
-  bool         needCleanUp;
-  uv_loop_t    loop;
-  uv_thread_t  thread;
-  uv_barrier_t barrier;
-  uv_process_t process;
-  int          spawnErr;
-  uv_pipe_t    ctrlPipe;
-  uv_async_t   stopAsync;
-  int32_t      stopCalled;
-  int32_t      dnodeId;
-} SUdfdData;
-
 typedef struct SDnode {
   int8_t        once;
   bool          stop;
   EDndRunStatus status;
   SStartupInfo  startup;
   SDnodeTrans   trans;
-  SUdfdData     udfdData;
   TdThreadMutex mutex;
   TdFilePtr     lockfile;
   SDnodeData    data;
@@ -104,6 +86,8 @@ int32_t dmStartNode(SMgmtWrapper *pWrapper);
 void    dmStopNode(SMgmtWrapper *pWrapper);
 void    dmCloseNode(SMgmtWrapper *pWrapper);
 int32_t dmRunDnode(SDnode *pDnode);
+void    dmStopNodes(SDnode *pDnode);
+void    dmCloseNodes(SDnode *pDnode);
 
 // dmTransport.c
 int32_t dmInitServer(SDnode *pDnode);

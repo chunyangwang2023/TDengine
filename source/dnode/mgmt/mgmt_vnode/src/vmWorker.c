@@ -257,7 +257,12 @@ int32_t vmPutMsgToStreamQueue(SVnodeMgmt *pMgmt, SRpcMsg *pMsg) { return vmPutMs
 int32_t vmPutMsgToMgmtQueue(SVnodeMgmt *pMgmt, SRpcMsg *pMsg) {
   const STraceId *trace = &pMsg->info.traceId;
   dGTrace("msg:%p, put into vnode-mgmt queue", pMsg);
+#if !defined(TD_MC)
   taosWriteQitem(pMgmt->mgmtWorker.queue, pMsg);
+#else
+  SQueueInfo info = {.ahandle = pMgmt};
+  vmProcessMgmtQueue(&info, pMsg);
+#endif
   return 0;
 }
 
@@ -331,43 +336,56 @@ int32_t vmGetQueueSize(SVnodeMgmt *pMgmt, int32_t vgId, EQueueType qtype) {
 }
 
 int32_t vmAllocQueue(SVnodeMgmt *pMgmt, SVnodeObj *pVnode) {
+#if !defined(TD_MC)
   SMultiWorkerCfg wcfg = {.max = 1, .name = "vnode-write", .fp = (FItems)vnodeProposeWriteMsg, .param = pVnode->pImpl};
-  SMultiWorkerCfg scfg = {.max = 1, .name = "vnode-sync", .fp = (FItems)vmProcessSyncQueue, .param = pVnode};
-  SMultiWorkerCfg sccfg = {.max = 1, .name = "vnode-sync-rd", .fp = (FItems)vmProcessSyncQueue, .param = pVnode};
-  SMultiWorkerCfg acfg = {.max = 1, .name = "vnode-apply", .fp = (FItems)vnodeApplyWriteMsg, .param = pVnode->pImpl};
   (void)tMultiWorkerInit(&pVnode->pWriteW, &wcfg);
+  SMultiWorkerCfg scfg = {.max = 1, .name = "vnode-sync", .fp = (FItems)vmProcessSyncQueue, .param = pVnode};
   (void)tMultiWorkerInit(&pVnode->pSyncW, &scfg);
+  SMultiWorkerCfg sccfg = {.max = 1, .name = "vnode-sync-rd", .fp = (FItems)vmProcessSyncQueue, .param = pVnode};
   (void)tMultiWorkerInit(&pVnode->pSyncRdW, &sccfg);
+  SMultiWorkerCfg acfg = {.max = 1, .name = "vnode-apply", .fp = (FItems)vnodeApplyWriteMsg, .param = pVnode->pImpl};
   (void)tMultiWorkerInit(&pVnode->pApplyW, &acfg);
+  pVnode->pStreamQ = tAutoQWorkerAllocQueue(&pMgmt->streamPool, pVnode, (FItem)vmProcessStreamQueue);
+#else
+  SMultiWorkerCfg wcfg = {.max = 1, .name = "data-write", .fp = (FItems)vnodeProposeWriteMsg, .param = pVnode->pImpl};
+  (void)tMultiWorkerInit(&pVnode->pWriteW, &wcfg);
+#endif
 
   pVnode->pQueryQ = tQWorkerAllocQueue(&pMgmt->queryPool, pVnode, (FItem)vmProcessQueryQueue);
-  pVnode->pStreamQ = tAutoQWorkerAllocQueue(&pMgmt->streamPool, pVnode, (FItem)vmProcessStreamQueue);
   pVnode->pFetchQ = tWWorkerAllocQueue(&pMgmt->fetchPool, pVnode, (FItems)vmProcessFetchQueue);
 
-  if (pVnode->pWriteW.queue == NULL || pVnode->pSyncW.queue == NULL || pVnode->pSyncRdW.queue == NULL ||
-      pVnode->pApplyW.queue == NULL || pVnode->pQueryQ == NULL || pVnode->pStreamQ == NULL || pVnode->pFetchQ == NULL) {
+  if (pVnode->pWriteW.queue == NULL || pVnode->pQueryQ == NULL || pVnode->pFetchQ == NULL
+#if !defined(TD_MC)
+      || pVnode->pSyncW.queue == NULL || pVnode->pSyncRdW.queue == NULL || pVnode->pApplyW.queue == NULL ||
+      pVnode->pStreamQ == NULL
+#endif
+  ) {
     terrno = TSDB_CODE_OUT_OF_MEMORY;
     return -1;
   }
 
   dInfo("vgId:%d, write-queue:%p is alloced, thread:%08" PRId64, pVnode->vgId, pVnode->pWriteW.queue,
         pVnode->pWriteW.queue->threadId);
+#if !defined(TD_MC)
   dInfo("vgId:%d, sync-queue:%p is alloced, thread:%08" PRId64, pVnode->vgId, pVnode->pSyncW.queue,
         pVnode->pSyncW.queue->threadId);
   dInfo("vgId:%d, sync-rd-queue:%p is alloced, thread:%08" PRId64, pVnode->vgId, pVnode->pSyncRdW.queue,
         pVnode->pSyncRdW.queue->threadId);
   dInfo("vgId:%d, apply-queue:%p is alloced, thread:%08" PRId64, pVnode->vgId, pVnode->pApplyW.queue,
         pVnode->pApplyW.queue->threadId);
+  dInfo("vgId:%d, stream-queue:%p is alloced", pVnode->vgId, pVnode->pStreamQ);
+#endif
   dInfo("vgId:%d, query-queue:%p is alloced", pVnode->vgId, pVnode->pQueryQ);
   dInfo("vgId:%d, fetch-queue:%p is alloced, thread:%08" PRId64, pVnode->vgId, pVnode->pFetchQ,
         pVnode->pFetchQ->threadId);
-  dInfo("vgId:%d, stream-queue:%p is alloced", pVnode->vgId, pVnode->pStreamQ);
   return 0;
 }
 
 void vmFreeQueue(SVnodeMgmt *pMgmt, SVnodeObj *pVnode) {
   tQWorkerFreeQueue(&pMgmt->queryPool, pVnode->pQueryQ);
+#if !defined(TD_MC)
   tAutoQWorkerFreeQueue(&pMgmt->streamPool, pVnode->pStreamQ);
+#endif
   tWWorkerFreeQueue(&pMgmt->fetchPool, pVnode->pFetchQ);
   pVnode->pQueryQ = NULL;
   pVnode->pStreamQ = NULL;
@@ -376,6 +394,7 @@ void vmFreeQueue(SVnodeMgmt *pMgmt, SVnodeObj *pVnode) {
 }
 
 int32_t vmStartWorker(SVnodeMgmt *pMgmt) {
+#if !defined(TD_MC)
   SQWorkerPool *pQPool = &pMgmt->queryPool;
   pQPool->name = "vnode-query";
   pQPool->min = tsNumOfVnodeQueryThreads;
@@ -401,13 +420,30 @@ int32_t vmStartWorker(SVnodeMgmt *pMgmt) {
   };
   if (tSingleWorkerInit(&pMgmt->mgmtWorker, &mgmtCfg) != 0) return -1;
 
+#else
+
+  SQWorkerPool *pQPool = &pMgmt->queryPool;
+  pQPool->name = "data-read";
+  pQPool->min = tsNumOfVnodeQueryThreads;
+  pQPool->max = tsNumOfVnodeQueryThreads;
+  if (tQWorkerInit(pQPool) != 0) return -1;
+
+  SWWorkerPool *pFPool = &pMgmt->fetchPool;
+  pFPool->name = "data-fetch";
+  pFPool->max = tsNumOfVnodeFetchThreads;
+  if (tWWorkerInit(pFPool) != 0) return -1;
+
+#endif
+
   dDebug("vnode workers are initialized");
   return 0;
 }
 
 void vmStopWorker(SVnodeMgmt *pMgmt) {
   tQWorkerCleanup(&pMgmt->queryPool);
+#if !defined(TD_MC)
   tAutoQWorkerCleanup(&pMgmt->streamPool);
+#endif
   tWWorkerCleanup(&pMgmt->fetchPool);
   dDebug("vnode workers are closed");
 }

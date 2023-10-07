@@ -640,6 +640,11 @@ static int32_t collectMetaKeyFromGrant(SCollectMetaKeyCxt* pCxt, SGrantStmt* pSt
 
 static int32_t collectMetaKeyFromQuery(SCollectMetaKeyCxt* pCxt, SNode* pStmt) {
   pCxt->pStmt = pStmt;
+  if (pStmt == NULL) {
+    terrno = TSDB_CODE_OPS_NOT_SUPPORT;
+    return -1;
+  }
+
   switch (nodeType(pStmt)) {
     case QUERY_NODE_SET_OPERATOR:
       return collectMetaKeyFromSetOperator(pCxt, (SSetOperator*)pStmt);

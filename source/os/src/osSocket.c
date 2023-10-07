@@ -978,6 +978,11 @@ uint32_t taosGetIpv4FromFqdn(const char *fqdn) {
 }
 
 int32_t taosGetFqdn(char *fqdn) {
+#ifdef _TD_SYLIXOS_
+  strcpy(fqdn, "localhost");
+  return 0;
+#endif
+
 #ifdef WINDOWS
   // Initialize Winsock
   WSADATA wsaData;
@@ -1080,11 +1085,15 @@ int32_t taosCreateSocketWithTimeout(uint32_t timeout) {
   //  return -1;
   //}
 #else  // Linux like systems
+
+#ifndef _TD_SYLIXOS_
   uint32_t conn_timeout_ms = timeout;
   if (0 != setsockopt(fd, IPPROTO_TCP, TCP_USER_TIMEOUT, (char *)&conn_timeout_ms, sizeof(conn_timeout_ms))) {
     taosCloseSocketNoCheck1(fd);
     return -1;
   }
+#endif
+
 #endif
 
   return (int)fd;

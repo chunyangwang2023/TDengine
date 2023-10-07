@@ -98,6 +98,34 @@ bool          taosDirEntryIsDir(TdDirEntryPtr pDirEntry);
 char         *taosGetDirEntryName(TdDirEntryPtr pDirEntry);
 int32_t       taosCloseDir(TdDirPtr *ppDir);
 
+#ifdef _TD_SYLIXOS_
+enum {
+  WRDE_NOSPACE = 1, /* Ran out of memory.  */
+  WRDE_BADCHAR,     /* A metachar appears in the wrong place.  */
+  WRDE_BADVAL,      /* Undefined var reference with WRDE_UNDEF.  */
+  WRDE_CMDSUB,      /* Command substitution with WRDE_NOCMD.  */
+  WRDE_SYNTAX       /* Shell syntax error.  */
+};
+
+typedef struct {
+  int    we_wordc;
+  char **we_wordv;
+  int    we_offs;
+  char   wordPos[20];
+} wordexp_t;
+
+typedef int (*__compar_fn_t)(const void *, const void *);
+
+int sendfile(int out_fd, int in_fd, off_t *offset, size_t size);
+
+#define llroundl llround
+#define floorl floor
+#define openlog(...) {}
+#define syslog(...) {}
+#define closelog(...) {}
+
+#endif
+
 #ifdef __cplusplus
 }
 #endif

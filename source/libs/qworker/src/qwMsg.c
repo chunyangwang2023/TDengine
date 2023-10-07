@@ -279,6 +279,10 @@ int32_t qwBuildAndSendCQueryMsg(QW_FPARAMS_DEF, SRpcHandleInfo *pConn) {
 }
 
 int32_t qwRegisterQueryBrokenLinkArg(QW_FPARAMS_DEF, SRpcHandleInfo *pConn) {
+#if defined(TD_MC)
+  return 0;
+#endif
+
   STaskDropReq qMsg;
   qMsg.header.vgId = mgmt->nodeId;
   qMsg.header.contLen = 0;

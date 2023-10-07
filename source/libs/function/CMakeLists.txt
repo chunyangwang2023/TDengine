@@ -1,6 +1,12 @@
 aux_source_directory(src FUNCTION_SRC)
 aux_source_directory(src/detail FUNCTION_SRC_DETAIL)
 list(REMOVE_ITEM FUNCTION_SRC src/udfd.c)
+
+IF(${TD_BUILD_MC})
+    list(REMOVE_ITEM FUNCTION_SRC src/tudf.c)
+    list(APPEND FUNCTION_SRC src/mc/udfMc.c)
+ENDIF()
+
 add_library(function STATIC ${FUNCTION_SRC} ${FUNCTION_SRC_DETAIL})
 target_include_directories(
     function
@@ -34,8 +40,10 @@ target_link_libraries(
     PRIVATE scalar 
     PRIVATE transport 
     PRIVATE stream ${LINK_JEMALLOC}
-    PUBLIC uv_a
 )
+
+if(NOT ${TD_BUILD_MC})
+target_link_libraries(function PUBLIC uv_a)
 
 add_executable(runUdf test/runUdf.c)
 target_include_directories(
@@ -162,4 +170,4 @@ target_link_libraries(
     PUBLIC uv_a
     PRIVATE os util common nodes function ${LINK_JEMALLOC}
     )
-
+endif()

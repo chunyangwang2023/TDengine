@@ -218,11 +218,18 @@ void syslog(int unused, const char *format, ...);
 #endif
 #else
 // Linux, length of name must <= 16 (the last '\0' included)
+
+#ifdef _TD_SYLIXOS_
+#define setThreadName(name)
+#else
 #define setThreadName(name)     \
   do {                          \
     prctl(PR_SET_NAME, (name)); \
   } while (0)
 #endif
+
+#endif
+
 #else
 // Windows
 #define setThreadName(name)
