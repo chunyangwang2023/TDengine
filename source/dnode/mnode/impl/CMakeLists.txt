@@ -1,4 +1,10 @@
 aux_source_directory(src MNODE_SRC)
+
+IF (${TD_BUILD_MC})
+  list(APPEND MNODE_SRC ${MC_SOURCE_DIR}/source/mc/src/mcPrivilege.c)
+  ADD_DEFINITIONS(-D_PRIVILEGE)
+ENDIF ()
+
 IF (TD_PRIVILEGE)
   ADD_DEFINITIONS(-D_PRIVILEGE)
 ENDIF ()
