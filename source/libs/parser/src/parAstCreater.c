@@ -1216,12 +1216,19 @@ SNode* createAlterDatabaseStmt(SAstCreateContext* pCxt, SToken* pDbName, SNode* 
 
 SNode* createFlushDatabaseStmt(SAstCreateContext* pCxt, SToken* pDbName) {
   CHECK_PARSER_STATUS(pCxt);
+
+#if !defined(TD_MC)
   if (!checkDbName(pCxt, pDbName, false)) {
     return NULL;
   }
+#endif
   SFlushDatabaseStmt* pStmt = (SFlushDatabaseStmt*)nodesMakeNode(QUERY_NODE_FLUSH_DATABASE_STMT);
   CHECK_OUT_OF_MEM(pStmt);
+#if !defined(TD_MC)
   COPY_STRING_FORM_ID_TOKEN(pStmt->dbName, pDbName);
+#else
+  tstrncpy(pStmt->dbName, "tdlite", sizeof(pStmt->dbName));
+#endif
   return (SNode*)pStmt;
 }
 
