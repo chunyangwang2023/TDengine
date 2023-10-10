@@ -292,8 +292,8 @@ typedef enum ELogicConditionType {
 #define TSDB_MULTI_TABLEMETA_MAX_NUM 100000  // maximum batch size allowed to load table meta
 
 #define TSDB_MIN_VNODES_PER_DB          1
-#define TSDB_MAX_VNODES_PER_DB          1024
-#define TSDB_DEFAULT_VN_PER_DB          2
+#define TSDB_MAX_VNODES_PER_DB          1
+#define TSDB_DEFAULT_VN_PER_DB          1
 #define TSDB_MIN_BUFFER_PER_VNODE       3      // unit MB
 #define TSDB_MAX_BUFFER_PER_VNODE       16384  // unit MB
 #define TSDB_DEFAULT_BUFFER_PER_VNODE   256
@@ -335,7 +335,7 @@ typedef enum ELogicConditionType {
 #define TSDB_MAX_COMP_LEVEL             2
 #define TSDB_DEFAULT_COMP_LEVEL         2
 #define TSDB_MIN_DB_REPLICA             1
-#define TSDB_MAX_DB_REPLICA             3
+#define TSDB_MAX_DB_REPLICA             1
 #define TSDB_DEFAULT_DB_REPLICA         1
 #define TSDB_DB_STRICT_STR_LEN          sizeof(TSDB_DB_STRICT_OFF_STR)
 #define TSDB_DB_STRICT_OFF_STR          "off"
@@ -352,14 +352,14 @@ typedef enum ELogicConditionType {
 #define TSDB_CACHE_MODEL_LAST_ROW       1
 #define TSDB_CACHE_MODEL_LAST_VALUE     2
 #define TSDB_CACHE_MODEL_BOTH           3
-#define TSDB_DEFAULT_CACHE_MODEL        TSDB_CACHE_MODEL_NONE
+#define TSDB_DEFAULT_CACHE_MODEL        TSDB_CACHE_MODEL_LAST_ROW
 #define TSDB_MIN_DB_CACHE_SIZE          1  // MB
-#define TSDB_MAX_DB_CACHE_SIZE          65536
+#define TSDB_MAX_DB_CACHE_SIZE          1
 #define TSDB_DEFAULT_CACHE_SIZE         1
 #define TSDB_DB_STREAM_MODE_OFF         0
 #define TSDB_DB_STREAM_MODE_ON          1
 #define TSDB_DEFAULT_DB_STREAM_MODE     0
-#define TSDB_DB_SINGLE_STABLE_ON        1
+#define TSDB_DB_SINGLE_STABLE_ON        0
 #define TSDB_DB_SINGLE_STABLE_OFF       0
 #define TSDB_DEFAULT_DB_SINGLE_STABLE   TSDB_DB_SINGLE_STABLE_OFF
 #define TSDB_DB_SCHEMALESS_ON           1
@@ -368,11 +368,11 @@ typedef enum ELogicConditionType {
 #define TSDB_MIN_STT_TRIGGER            1
 #define TSDB_MAX_STT_TRIGGER            16
 #define TSDB_DEFAULT_SST_TRIGGER        1
-#define TSDB_MIN_HASH_PREFIX            (2 - TSDB_TABLE_NAME_LEN)
-#define TSDB_MAX_HASH_PREFIX            (TSDB_TABLE_NAME_LEN - 2)
+#define TSDB_MIN_HASH_PREFIX            0
+#define TSDB_MAX_HASH_PREFIX            0
 #define TSDB_DEFAULT_HASH_PREFIX        0
-#define TSDB_MIN_HASH_SUFFIX            (2 - TSDB_TABLE_NAME_LEN)
-#define TSDB_MAX_HASH_SUFFIX            (TSDB_TABLE_NAME_LEN - 2)
+#define TSDB_MIN_HASH_SUFFIX            0
+#define TSDB_MAX_HASH_SUFFIX            0
 #define TSDB_DEFAULT_HASH_SUFFIX        0
 
 #define TSDB_DB_MIN_WAL_RETENTION_PERIOD -1
