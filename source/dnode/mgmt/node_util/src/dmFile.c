@@ -145,7 +145,7 @@ _OVER:
   return code;
 }
 
-TdFilePtr dmCheckRunning(const char *dataDir) {
+TdFilePtr dmCheckRunning(const char *dataDir, int32_t inputRetryTimes) {
   char filepath[PATH_MAX] = {0};
   snprintf(filepath, sizeof(filepath), "%s%s.running", dataDir, TD_DIRSEP);
 
@@ -165,7 +165,7 @@ TdFilePtr dmCheckRunning(const char *dataDir) {
     taosMsleep(1000);
     retryTimes++;
     dError("failed to lock file:%s since %s, retryTimes:%d", filepath, terrstr(), retryTimes);
-  } while (retryTimes < 12);
+  } while (retryTimes < inputRetryTimes);
 
   if (ret < 0) {
     terrno = TAOS_SYSTEM_ERROR(errno);

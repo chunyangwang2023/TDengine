@@ -138,7 +138,7 @@ int32_t dmInitDnode(SDnode *pDnode) {
     goto _OVER;
   }
 
-  pDnode->lockfile = dmCheckRunning(tsDataDir);
+  pDnode->lockfile = dmCheckRunning(tsDataDir, 12);
   if (pDnode->lockfile == NULL) {
     goto _OVER;
   }

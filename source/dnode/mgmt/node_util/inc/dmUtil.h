@@ -159,7 +159,7 @@ void        dmGetMonitorSystemInfo(SMonSysInfo *pInfo);
 // dmFile.c
 int32_t   dmReadFile(const char *path, const char *name, bool *pDeployed);
 int32_t   dmWriteFile(const char *path, const char *name, bool deployed);
-TdFilePtr dmCheckRunning(const char *dataDir);
+TdFilePtr dmCheckRunning(const char *dataDir, int32_t retryTimes);
 
 // dmEps.c
 int32_t dmReadEps(SDnodeData *pData);

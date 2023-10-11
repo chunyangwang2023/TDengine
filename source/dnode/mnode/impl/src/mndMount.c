@@ -910,7 +910,7 @@ static int32_t mndProcessCreateMountReq(SRpcMsg *pReq) {
   }
 
   if (strstr(createReq.mountName, "_") != NULL) {
-    terrno = TSDB_CODE_MND_INVALID_MOUNT_NAME;
+    terrno = TSDB_CODE_MND_INVALID_MOUNT_NAME_LINE;
     goto _OVER;
   }
 

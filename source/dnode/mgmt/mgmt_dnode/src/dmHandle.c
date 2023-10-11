@@ -199,6 +199,17 @@ int32_t dmGetMountInfo(SDnodeMgmt *pMgmt, SGetMountInfoReq *pReq, SGetMountInfoR
   snprintf(cfgfile, 256, "%s/taos.cfg", tsTempDir);
   snprintf(jsonfile, 256, "%s/sdb.json", tsTempDir);
 
+  TdFilePtr lockfile = dmCheckRunning(pReq->mountPath, 0);
+  if (lockfile == NULL) {
+    dError("failed to lock file at %s since %s", pReq->mountPath, terrstr());
+    terrno = TSDB_CODE_MND_MOUNT_BEING_OPENED;
+    return -1;
+  } else {
+    taosUnLockFile(lockfile);
+    taosCloseFile(&lockfile);
+    lockfile = NULL;
+  }
+
   dInfo("mount:%s, prepare env at %s cfgFile:%s jsonFile:%s", pReq->mountName, workdir, cfgfile, jsonfile);
   pCfgFile = taosOpenFile(cfgfile, TD_FILE_CREATE | TD_FILE_WRITE | TD_FILE_TRUNC);
   if (pCfgFile == NULL) {
@@ -218,6 +229,8 @@ int32_t dmGetMountInfo(SDnodeMgmt *pMgmt, SGetMountInfoReq *pReq, SGetMountInfoR
   bufLen = snprintf(buf, 1024, "dataDir    %s \r\n", pReq->mountPath);
   if (taosWriteFile(pCfgFile, buf, bufLen) != bufLen) goto _OVER;
   bufLen = snprintf(buf, 1024, "logDir     %s \r\n", tsTempDir);
+  if (taosWriteFile(pCfgFile, buf, bufLen) != bufLen) goto _OVER;
+  bufLen = snprintf(buf, 1024, "debugFlag  143 \r\n");
   if (taosWriteFile(pCfgFile, buf, bufLen) != bufLen) goto _OVER;
 
   UNUSED(taosFsyncFile(pCfgFile));

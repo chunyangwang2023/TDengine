@@ -314,7 +314,7 @@ int32_t vnodeMount(int32_t vgId, SMountVnodeReq *pReq, STfs *pTfs) {
 
   vInfo("vgId:%d, copy sync from %s to %s", dstVgId, srcSyncPath, dstSyncPath);
   (void)taosRemoveFile(dstSyncPath);
-  if (taosCopyFile(srcSyncPath, dstSyncPath) < 0) {
+  if (taosSymlink(srcSyncPath, dstSyncPath) < 0) {
     terrno = TAOS_SYSTEM_ERROR(errno);
     vError("vgId:%d, failed to copy sync from %s to %s since %s", dstVgId, srcSyncPath, dstSyncPath, tstrerror(terrno));
     return -1;
