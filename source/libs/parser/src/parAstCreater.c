@@ -777,17 +777,11 @@ SNode* addWindowClauseClause(SAstCreateContext* pCxt, SNode* pStmt, SNode* pWind
 }
 
 SNode* addGroupByClause(SAstCreateContext* pCxt, SNode* pStmt, SNodeList* pGroupByList) {
-#if !defined(TD_MC)
   CHECK_PARSER_STATUS(pCxt);
   if (QUERY_NODE_SELECT_STMT == nodeType(pStmt)) {
     ((SSelectStmt*)pStmt)->pGroupByList = pGroupByList;
   }
   return pStmt;
-#else
-  terrno = TSDB_CODE_OPS_NOT_SUPPORT;
-  ((SSelectStmt*)pStmt)->pGroupByList = NULL;
-  return pStmt;
-#endif
 }
 
 SNode* addHavingClause(SAstCreateContext* pCxt, SNode* pStmt, SNode* pHaving) {
