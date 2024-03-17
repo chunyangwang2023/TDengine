@@ -954,9 +954,12 @@ table_reference_list(A) ::= table_reference_list(B) NK_COMMA table_reference(C).
 
 /************************************************ table_reference *****************************************************/
 table_reference(A) ::= table_primary(B).                                          { A = B; }
+table_reference(A) ::= joined_table(B).                                           { A = B; }
 
 table_primary(A) ::= table_name(B) alias_opt(C).                                  { A = createRealTableNode(pCxt, NULL, &B, &C); }
 table_primary(A) ::= db_name(B) NK_DOT table_name(C) alias_opt(D).                { A = createRealTableNode(pCxt, &B, &C, &D); }
+table_primary(A) ::= subquery(B) alias_opt(C).                                    { A = createTempTableNode(pCxt, releaseRawExprNode(pCxt, B), &C); }
+table_primary(A) ::= parenthesized_joined_table(B).                               { A = B; }
 
 %type alias_opt                                                                   { SToken }
 %destructor alias_opt                                                             { }
@@ -964,6 +967,8 @@ alias_opt(A) ::= .                                                              
 alias_opt(A) ::= table_alias(B).                                                  { A = B; }
 alias_opt(A) ::= AS table_alias(B).                                               { A = B; }
 
+parenthesized_joined_table(A) ::= NK_LP joined_table(B) NK_RP.                    { A = B; }
+parenthesized_joined_table(A) ::= NK_LP parenthesized_joined_table(B) NK_RP.      { A = B; }
 
 /************************************************ joined_table ********************************************************/
 joined_table(A) ::=
@@ -977,9 +982,14 @@ join_type(A) ::= INNER.                                                         
 /************************************************ query_specification *************************************************/
 query_specification(A) ::=
   SELECT set_quantifier_opt(B) select_list(C) from_clause_opt(D) 
-  where_clause_opt(E) .  { 
+  where_clause_opt(E) partition_by_clause_opt(F) 
+  fill_opt(L) twindow_clause_opt(G) having_clause_opt(I).  { 
                                                                                     A = createSelectStmt(pCxt, B, C, D);
                                                                                     A = addWhereClause(pCxt, A, E);
+                                                                                    A = addPartitionByClause(pCxt, A, F);
+                                                                                    A = addWindowClauseClause(pCxt, A, G);
+                                                                                    A = addHavingClause(pCxt, A, I);
+                                                                                    A = addFillClause(pCxt, A, L);
                                                                                   }
 
 %type set_quantifier_opt                                                          { bool }
