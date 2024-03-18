@@ -2399,16 +2399,6 @@ const SBuiltinFuncDefinition funcMgtBuiltins[] = {
     .combineFunc  = lastCombine,
   },
   {
-    .name = "abs",
-    .type = FUNCTION_TYPE_ABS,
-    .classification = FUNC_MGT_SCALAR_FUNC,
-    .translateFunc = translateInOutNum,
-    .getEnvFunc   = NULL,
-    .initFunc     = NULL,
-    .sprocessFunc = absFunction,
-    .finalizeFunc = NULL
-  },
-  {
     .name = "diff",
     .type = FUNCTION_TYPE_DIFF,
     .classification = FUNC_MGT_INDEFINITE_ROWS_FUNC | FUNC_MGT_SELECT_FUNC | FUNC_MGT_TIMELINE_FUNC | FUNC_MGT_IMPLICIT_TS_FUNC |
