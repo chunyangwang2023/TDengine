@@ -2251,6 +2251,20 @@ const SBuiltinFuncDefinition funcMgtBuiltins[] = {
     .pPartialFunc = "top",
     .pMergeFunc   = "top",
     .createMergeParaFuc = topBotCreateMergeParam
+  },{
+    .name = "bottom",
+    .type = FUNCTION_TYPE_BOTTOM,
+    .classification = FUNC_MGT_AGG_FUNC | FUNC_MGT_SELECT_FUNC | FUNC_MGT_MULTI_ROWS_FUNC | FUNC_MGT_KEEP_ORDER_FUNC | FUNC_MGT_FORBID_STREAM_FUNC | FUNC_MGT_FORBID_FILL_FUNC,
+    .translateFunc = translateTopBot,
+    .getEnvFunc   = getTopBotFuncEnv,
+    .initFunc     = topBotFunctionSetup,
+    .processFunc  = bottomFunction,
+    .sprocessFunc = topBotScalarFunction,
+    .finalizeFunc = topBotFinalize,
+    .combineFunc  = bottomCombine,
+    .pPartialFunc = "bottom",
+    .pMergeFunc   = "bottom",
+    .createMergeParaFuc = topBotCreateMergeParam
   },
   {
     .name = "last_row",
@@ -2395,6 +2409,19 @@ const SBuiltinFuncDefinition funcMgtBuiltins[] = {
     .finalizeFunc = NULL
   },
   {
+    .name = "diff",
+    .type = FUNCTION_TYPE_DIFF,
+    .classification = FUNC_MGT_INDEFINITE_ROWS_FUNC | FUNC_MGT_SELECT_FUNC | FUNC_MGT_TIMELINE_FUNC | FUNC_MGT_IMPLICIT_TS_FUNC |
+                      FUNC_MGT_KEEP_ORDER_FUNC | FUNC_MGT_FORBID_STREAM_FUNC | FUNC_MGT_CUMULATIVE_FUNC,
+    .translateFunc = translateDiff,
+    .getEnvFunc   = getDiffFuncEnv,
+    .initFunc     = diffFunctionSetup,
+    .processFunc  = diffFunction,
+    .sprocessFunc = diffScalarFunction,
+    .finalizeFunc = functionFinalize,
+    .estimateReturnRowsFunc = diffEstReturnRows,
+  },
+  {
     .name = "pow",
     .type = FUNCTION_TYPE_POW,
     .classification = FUNC_MGT_SCALAR_FUNC,
@@ -2442,6 +2469,125 @@ const SBuiltinFuncDefinition funcMgtBuiltins[] = {
     .getEnvFunc   = NULL,
     .initFunc     = NULL,
     .sprocessFunc = roundFunction,
+    .finalizeFunc = NULL
+  },
+  {
+    .name = "sin",
+    .type = FUNCTION_TYPE_SIN,
+    .classification = FUNC_MGT_SCALAR_FUNC,
+    .translateFunc = translateInNumOutDou,
+    .getEnvFunc   = NULL,
+    .initFunc     = NULL,
+    .sprocessFunc = sinFunction,
+    .finalizeFunc = NULL
+  },
+  {
+    .name = "cos",
+    .type = FUNCTION_TYPE_COS,
+    .classification = FUNC_MGT_SCALAR_FUNC,
+    .translateFunc = translateInNumOutDou,
+    .getEnvFunc   = NULL,
+    .initFunc     = NULL,
+    .sprocessFunc = cosFunction,
+    .finalizeFunc = NULL
+  },
+  {
+    .name = "tan",
+    .type = FUNCTION_TYPE_TAN,
+    .classification = FUNC_MGT_SCALAR_FUNC,
+    .translateFunc = translateInNumOutDou,
+    .getEnvFunc   = NULL,
+    .initFunc     = NULL,
+    .sprocessFunc = tanFunction,
+    .finalizeFunc = NULL
+  },
+  {
+    .name = "asin",
+    .type = FUNCTION_TYPE_ASIN,
+    .classification = FUNC_MGT_SCALAR_FUNC,
+    .translateFunc = translateInNumOutDou,
+    .getEnvFunc   = NULL,
+    .initFunc     = NULL,
+    .sprocessFunc = asinFunction,
+    .finalizeFunc = NULL
+  },
+  {
+    .name = "acos",
+    .type = FUNCTION_TYPE_ACOS,
+    .classification = FUNC_MGT_SCALAR_FUNC,
+    .translateFunc = translateInNumOutDou,
+    .getEnvFunc   = NULL,
+    .initFunc     = NULL,
+    .sprocessFunc = acosFunction,
+    .finalizeFunc = NULL
+  },
+  {
+    .name = "atan",
+    .type = FUNCTION_TYPE_ATAN,
+    .classification = FUNC_MGT_SCALAR_FUNC,
+    .translateFunc = translateInNumOutDou,
+    .getEnvFunc   = NULL,
+    .initFunc     = NULL,
+    .sprocessFunc = atanFunction,
+    .finalizeFunc = NULL
+  },
+  {
+    .name = "length",
+    .type = FUNCTION_TYPE_LENGTH,
+    .classification = FUNC_MGT_SCALAR_FUNC | FUNC_MGT_STRING_FUNC,
+    .translateFunc = translateLength,
+    .getEnvFunc   = NULL,
+    .initFunc     = NULL,
+    .sprocessFunc = lengthFunction,
+    .finalizeFunc = NULL
+  },{
+    .name = "cast",
+    .type = FUNCTION_TYPE_CAST,
+    .classification = FUNC_MGT_SCALAR_FUNC,
+    .translateFunc = translateCast,
+    .getEnvFunc   = NULL,
+    .initFunc     = NULL,
+    .sprocessFunc = castFunction,
+    .finalizeFunc = NULL
+  },
+  {
+    .name = "to_iso8601",
+    .type = FUNCTION_TYPE_TO_ISO8601,
+    .classification = FUNC_MGT_SCALAR_FUNC,
+    .translateFunc = translateToIso8601,
+    .getEnvFunc   = NULL,
+    .initFunc     = NULL,
+    .sprocessFunc = toISO8601Function,
+    .finalizeFunc = NULL
+  },
+  {
+    .name = "to_unixtimestamp",
+    .type = FUNCTION_TYPE_TO_UNIXTIMESTAMP,
+    .classification = FUNC_MGT_SCALAR_FUNC,
+    .translateFunc = translateToUnixtimestamp,
+    .getEnvFunc   = NULL,
+    .initFunc     = NULL,
+    .sprocessFunc = toUnixtimestampFunction,
+    .finalizeFunc = NULL
+  },
+  {
+    .name = "timetruncate",
+    .type = FUNCTION_TYPE_TIMETRUNCATE,
+    .classification = FUNC_MGT_SCALAR_FUNC,
+    .translateFunc = translateTimeTruncate,
+    .getEnvFunc   = NULL,
+    .initFunc     = NULL,
+    .sprocessFunc = timeTruncateFunction,
+    .finalizeFunc = NULL
+  },
+  {
+    .name = "timediff",
+    .type = FUNCTION_TYPE_TIMEDIFF,
+    .classification = FUNC_MGT_SCALAR_FUNC,
+    .translateFunc = translateTimeDiff,
+    .getEnvFunc   = NULL,
+    .initFunc     = NULL,
+    .sprocessFunc = timeDiffFunction,
     .finalizeFunc = NULL
   },
   {
@@ -2602,6 +2748,16 @@ const SBuiltinFuncDefinition funcMgtBuiltins[] = {
     .type = FUNCTION_TYPE_SERVER_STATUS,
     .classification = FUNC_MGT_SYSTEM_INFO_FUNC | FUNC_MGT_SCALAR_FUNC,
     .translateFunc = translateServerStatusFunc,
+  },
+  {
+    .name = "_irowts",
+    .type = FUNCTION_TYPE_IROWTS,
+    .classification = FUNC_MGT_PSEUDO_COLUMN_FUNC | FUNC_MGT_INTERP_PC_FUNC | FUNC_MGT_KEEP_ORDER_FUNC,
+    .translateFunc = translateTimePseudoColumn,
+    .getEnvFunc   = getTimePseudoFuncEnv,
+    .initFunc     = NULL,
+    .sprocessFunc = NULL,
+    .finalizeFunc = NULL
   },
   {
     .name = "_isfilled",
