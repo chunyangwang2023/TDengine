@@ -2238,6 +2238,21 @@ const SBuiltinFuncDefinition funcMgtBuiltins[] = {
     .combineFunc  = avgCombine,
   },
   {
+    .name = "top",
+    .type = FUNCTION_TYPE_TOP,
+    .classification = FUNC_MGT_AGG_FUNC | FUNC_MGT_SELECT_FUNC | FUNC_MGT_MULTI_ROWS_FUNC | FUNC_MGT_KEEP_ORDER_FUNC | FUNC_MGT_FORBID_STREAM_FUNC | FUNC_MGT_FORBID_FILL_FUNC,
+    .translateFunc = translateTopBot,
+    .getEnvFunc   = getTopBotFuncEnv,
+    .initFunc     = topBotFunctionSetup,
+    .processFunc  = topFunction,
+    .sprocessFunc = topBotScalarFunction,
+    .finalizeFunc = topBotFinalize,
+    .combineFunc  = topCombine,
+    .pPartialFunc = "top",
+    .pMergeFunc   = "top",
+    .createMergeParaFuc = topBotCreateMergeParam
+  },
+  {
     .name = "last_row",
     .type = FUNCTION_TYPE_LAST_ROW,
     .classification = FUNC_MGT_AGG_FUNC | FUNC_MGT_MULTI_RES_FUNC | FUNC_MGT_SELECT_FUNC | FUNC_MGT_IMPLICIT_TS_FUNC | FUNC_MGT_KEEP_ORDER_FUNC,
