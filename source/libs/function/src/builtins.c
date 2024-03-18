@@ -2420,6 +2420,15 @@ const SBuiltinFuncDefinition funcMgtBuiltins[] = {
     .sprocessFunc = diffScalarFunction,
     .finalizeFunc = functionFinalize,
     .estimateReturnRowsFunc = diffEstReturnRows,
+  },{
+    .name = "abs",
+    .type = FUNCTION_TYPE_ABS,
+    .classification = FUNC_MGT_SCALAR_FUNC,
+    .translateFunc = translateInOutNum,
+    .getEnvFunc   = NULL,
+    .initFunc     = NULL,
+    .sprocessFunc = absFunction,
+    .finalizeFunc = NULL
   },
   {
     .name = "pow",
