@@ -17,6 +17,7 @@
 #define _TD_DND_MGMT_H_
 
 #include "dmInt.h"
+#include "tfs.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -44,6 +45,8 @@ typedef struct {
 typedef struct {
   void        *serverRpc;
   void        *clientRpc;
+  void        *statusRpc;
+  void        *syncRpc;
   SDnodeHandle msgHandles[TDMT_MAX];
 } SDnodeTrans;
 
@@ -61,6 +64,7 @@ typedef struct SDnode {
   TdThreadMutex mutex;
   TdFilePtr     lockfile;
   SDnodeData    data;
+  STfs         *pTfs;
   SMgmtWrapper  wrappers[NODE_END];
 } SDnode;
 
@@ -94,13 +98,24 @@ int32_t dmInitServer(SDnode *pDnode);
 void    dmCleanupServer(SDnode *pDnode);
 int32_t dmInitClient(SDnode *pDnode);
 void    dmCleanupClient(SDnode *pDnode);
+
+int32_t dmInitStatusClient(SDnode *pDnode);
+void    dmCleanupStatusClient(SDnode *pDnode);
+
+int32_t dmInitSyncClient(SDnode *pDnode);
+void    dmCleanupSyncClient(SDnode *pDnode);
+
+int32_t dmInitStatusClient(SDnode *pDnode);
+void    dmCleanupStatusClient(SDnode *pDnode);
 SMsgCb  dmGetMsgcb(SDnode *pDnode);
 int32_t dmInitMsgHandle(SDnode *pDnode);
 int32_t dmProcessNodeMsg(SMgmtWrapper *pWrapper, SRpcMsg *pMsg);
 
 // dmMonitor.c
 void dmSendMonitorReport();
+void dmSendAuditRecords();
 void dmGetVnodeLoads(SMonVloadInfo *pInfo);
+void dmGetVnodeLoadsLite(SMonVloadInfo *pInfo);
 void dmGetMnodeLoads(SMonMloadInfo *pInfo);
 void dmGetQnodeLoads(SQnodeLoad *pInfo);
 

@@ -42,10 +42,13 @@ typedef enum EGroupAction {
 
 typedef struct SLogicNode {
   ENodeType          type;
+  bool               dynamicOp;
+  bool               stmtRoot;
   SNodeList*         pTargets;  // SColumnNode
   SNode*             pConditions;
   SNodeList*         pChildren;
   struct SLogicNode* pParent;
+  SNodeList*         pHint;
   int32_t            optimizedFlag;
   uint8_t            precision;
   SNode*             pLimit;
@@ -53,6 +56,9 @@ typedef struct SLogicNode {
   EDataOrderLevel    requireDataOrder;  // requirements for input data
   EDataOrderLevel    resultDataOrder;   // properties of the output data
   EGroupAction       groupAction;
+  EOrder             inputTsOrder;
+  EOrder             outputTsOrder;
+  bool               forceCreateNonBlockingOptr;  // true if the operator can use non-blocking(pipeline) mode
 } SLogicNode;
 
 typedef enum EScanType {
@@ -103,16 +109,23 @@ typedef struct SScanLogicNode {
   bool          hasNormalCols;  // neither tag column nor primary key tag column
   bool          sortPrimaryKey;
   bool          igLastNull;
+  bool          groupOrderScan;
+  bool          onlyMetaCtbIdx; // for tag scan with no tbname
+  bool          paraTablesSort; // for table merge scan  
 } SScanLogicNode;
 
 typedef struct SJoinLogicNode {
-  SLogicNode node;
-  EJoinType  joinType;
-  SNode*     pMergeCondition;
-  SNode*     pOnConditions;
-  bool       isSingleTableJoin;
-  EOrder     inputTsOrder;
-  SNode*     pColEqualOnConditions;
+  SLogicNode     node;
+  EJoinType      joinType;
+  EJoinAlgorithm joinAlgo;
+  SNode*         pPrimKeyEqCond;
+  SNode*         pColEqCond;
+  SNode*         pTagEqCond;
+  SNode*         pTagOnCond;
+  SNode*         pOtherOnCond;
+  bool           isSingleTableJoin;
+  bool           hasSubQuery;
+  bool           isLowLevelJoin;
 } SJoinLogicNode;
 
 typedef struct SAggLogicNode {
@@ -131,6 +144,7 @@ typedef struct SProjectLogicNode {
   SNodeList* pProjections;
   char       stmtName[TSDB_TABLE_NAME_LEN];
   bool       ignoreGroupId;
+  bool       inputIgnoreGroup;
 } SProjectLogicNode;
 
 typedef struct SIndefRowsFuncLogicNode {
@@ -150,6 +164,28 @@ typedef struct SInterpFuncLogicNode {
   SNode*      pFillValues;  // SNodeListNode
   SNode*      pTimeSeries;  // SColumnNode
 } SInterpFuncLogicNode;
+
+typedef struct SGroupCacheLogicNode {
+  SLogicNode  node;
+  bool        grpColsMayBeNull;  
+  bool        grpByUid;
+  bool        globalGrp;
+  bool        batchFetch;
+  SNodeList*  pGroupCols;
+} SGroupCacheLogicNode;
+
+typedef struct SDynQueryCtrlStbJoin {
+  bool          batchFetch;
+  SNodeList*    pVgList;
+  SNodeList*    pUidList;
+  bool          srcScan[2];
+} SDynQueryCtrlStbJoin;
+
+typedef struct SDynQueryCtrlLogicNode {
+  SLogicNode           node;
+  EDynQueryType        qType;
+  SDynQueryCtrlStbJoin stbJoin;
+} SDynQueryCtrlLogicNode;
 
 typedef enum EModifyTableType { MODIFY_TABLE_TYPE_INSERT = 1, MODIFY_TABLE_TYPE_DELETE } EModifyTableType;
 
@@ -186,6 +222,7 @@ typedef struct SMergeLogicNode {
   int32_t    numOfChannels;
   int32_t    srcGroupId;
   bool       groupSort;
+  bool       ignoreGroupId;
 } SMergeLogicNode;
 
 typedef enum EWindowType {
@@ -228,8 +265,6 @@ typedef struct SWindowLogicNode {
   int8_t           igExpired;
   int8_t           igCheckUpdate;
   EWindowAlgorithm windowAlgo;
-  EOrder           inputTsOrder;
-  EOrder           outputTsOrder;
 } SWindowLogicNode;
 
 typedef struct SFillLogicNode {
@@ -240,13 +275,14 @@ typedef struct SFillLogicNode {
   SNode*      pWStartTs;
   SNode*      pValues;  // SNodeListNode
   STimeWindow timeRange;
-  EOrder      inputTsOrder;
 } SFillLogicNode;
 
 typedef struct SSortLogicNode {
   SLogicNode node;
   SNodeList* pSortKeys;
   bool       groupSort;
+  int64_t    maxRows;
+  bool       skipPKSortOpt;
 } SSortLogicNode;
 
 typedef struct SPartitionLogicNode {
@@ -254,6 +290,7 @@ typedef struct SPartitionLogicNode {
   SNodeList* pPartitionKeys;
   SNodeList* pTags;
   SNode*     pSubtable;
+  SNodeList* pAggFuncs;
 } SPartitionLogicNode;
 
 typedef enum ESubplanType {
@@ -309,12 +346,16 @@ typedef struct SDataBlockDescNode {
 
 typedef struct SPhysiNode {
   ENodeType           type;
+  bool                dynamicOp;
+  EOrder              inputTsOrder;
+  EOrder              outputTsOrder;
   SDataBlockDescNode* pOutputDataBlockDesc;
   SNode*              pConditions;
   SNodeList*          pChildren;
   struct SPhysiNode*  pParent;
   SNode*              pLimit;
   SNode*              pSlimit;
+  bool                forceCreateNonBlockingOptr;
 } SPhysiNode;
 
 typedef struct SScanPhysiNode {
@@ -325,9 +366,14 @@ typedef struct SScanPhysiNode {
   uint64_t   suid;
   int8_t     tableType;
   SName      tableName;
+  bool       groupOrderScan;
 } SScanPhysiNode;
 
-typedef SScanPhysiNode STagScanPhysiNode;
+typedef struct STagScanPhysiNode {
+  SScanPhysiNode scan;
+  bool       onlyMetaCtbIdx; //no tbname, tag index not used.
+} STagScanPhysiNode;
+
 typedef SScanPhysiNode SBlockDistScanPhysiNode;
 
 typedef struct SLastRowScanPhysiNode {
@@ -368,6 +414,7 @@ typedef struct STableScanPhysiNode {
   int8_t         igExpired;
   bool           assignBlockUid;
   int8_t         igCheckUpdate;
+  bool           paraTablesSort;  
 } STableScanPhysiNode;
 
 typedef STableScanPhysiNode STableSeqScanPhysiNode;
@@ -379,6 +426,7 @@ typedef struct SProjectPhysiNode {
   SNodeList* pProjections;
   bool       mergeDataBlock;
   bool       ignoreGroupId;
+  bool       inputIgnoreGroup;
 } SProjectPhysiNode;
 
 typedef struct SIndefRowsFuncPhysiNode {
@@ -402,12 +450,49 @@ typedef struct SInterpFuncPhysiNode {
 typedef struct SSortMergeJoinPhysiNode {
   SPhysiNode node;
   EJoinType  joinType;
-  SNode*     pMergeCondition;
-  SNode*     pOnConditions;
+  SNode*     pPrimKeyCond;
+  SNode*     pColEqCond;
+  SNode*     pOtherOnCond;
   SNodeList* pTargets;
-  EOrder     inputTsOrder;
-  SNode*     pColEqualOnConditions;
 } SSortMergeJoinPhysiNode;
+
+typedef struct SHashJoinPhysiNode {
+  SPhysiNode node;
+  EJoinType  joinType;
+  SNodeList* pOnLeft;
+  SNodeList* pOnRight;
+  SNode*     pFilterConditions;
+  SNodeList* pTargets;
+  SQueryStat inputStat[2];
+
+  SNode*     pPrimKeyCond;
+  SNode*     pColEqCond;
+  SNode*     pTagEqCond;  
+} SHashJoinPhysiNode;
+
+typedef struct SGroupCachePhysiNode {
+  SPhysiNode node;
+  bool       grpColsMayBeNull;
+  bool       grpByUid;
+  bool       globalGrp;
+  bool       batchFetch;
+  SNodeList* pGroupCols;
+} SGroupCachePhysiNode;
+
+typedef struct SStbJoinDynCtrlBasic {
+  bool     batchFetch;
+  int32_t  vgSlot[2];
+  int32_t  uidSlot[2];
+  bool     srcScan[2];
+} SStbJoinDynCtrlBasic;
+
+typedef struct SDynQueryCtrlPhysiNode {
+  SPhysiNode    node;
+  EDynQueryType qType;
+  union {
+    SStbJoinDynCtrlBasic stbJoin;
+  };
+} SDynQueryCtrlPhysiNode;
 
 typedef struct SAggPhysiNode {
   SPhysiNode node;
@@ -446,6 +531,7 @@ typedef struct SMergePhysiNode {
   int32_t    numOfChannels;
   int32_t    srcGroupId;
   bool       groupSort;
+  bool       ignoreGroupId;
 } SMergePhysiNode;
 
 typedef struct SWindowPhysiNode {
@@ -458,8 +544,6 @@ typedef struct SWindowPhysiNode {
   int64_t    watermark;
   int64_t    deleteMark;
   int8_t     igExpired;
-  EOrder     inputTsOrder;
-  EOrder     outputTsOrder;
   bool       mergeDataBlock;
 } SWindowPhysiNode;
 
@@ -486,7 +570,6 @@ typedef struct SFillPhysiNode {
   SNode*      pWStartTs;  // SColumnNode
   SNode*      pValues;    // SNodeListNode
   STimeWindow timeRange;
-  EOrder      inputTsOrder;
 } SFillPhysiNode;
 
 typedef SFillPhysiNode SStreamFillPhysiNode;
@@ -599,6 +682,8 @@ typedef struct SSubplan {
   SNode*         pTagCond;
   SNode*         pTagIndexCond;
   bool           showRewrite;
+  int32_t        rowsThreshold;
+  bool           dynamicRowThreshold;
 } SSubplan;
 
 typedef enum EExplainMode { EXPLAIN_MODE_DISABLE = 1, EXPLAIN_MODE_STATIC, EXPLAIN_MODE_ANALYZE } EExplainMode;
@@ -615,6 +700,7 @@ typedef struct SQueryPlan {
   int32_t      numOfSubplans;
   SNodeList*   pSubplans;  // Element is SNodeListNode. The execution level of subplan, starting from 0.
   SExplainInfo explainInfo;
+  void*        pPostPlan;
 } SQueryPlan;
 
 const char* dataOrderStr(EDataOrderLevel order);

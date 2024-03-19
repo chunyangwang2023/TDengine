@@ -82,6 +82,7 @@ cp %{_compiledir}/build/bin/taos                    %{buildroot}%{homepath}/bin
 cp %{_compiledir}/build/bin/taosd                   %{buildroot}%{homepath}/bin
 cp %{_compiledir}/build/bin/udfd                    %{buildroot}%{homepath}/bin
 cp %{_compiledir}/build/bin/taosBenchmark           %{buildroot}%{homepath}/bin
+cp %{_compiledir}/build/bin/taosdump                %{buildroot}%{homepath}/bin
 
 if [ -f %{_compiledir}/../build-taoskeeper/taoskeeper ]; then
     cp %{_compiledir}/../build-taoskeeper/taoskeeper %{buildroot}%{homepath}/bin
@@ -95,6 +96,7 @@ cp %{_compiledir}/build/lib/${libfile}              %{buildroot}%{homepath}/driv
 cp %{_compiledir}/../include/client/taos.h          %{buildroot}%{homepath}/include
 cp %{_compiledir}/../include/common/taosdef.h       %{buildroot}%{homepath}/include
 cp %{_compiledir}/../include/util/taoserror.h       %{buildroot}%{homepath}/include
+cp %{_compiledir}/../include/util/tdef.h       %{buildroot}%{homepath}/include
 cp %{_compiledir}/../include/libs/function/taosudf.h       %{buildroot}%{homepath}/include
 [ -f %{_compiledir}/build/include/taosws.h ] && cp %{_compiledir}/build/include/taosws.h            %{buildroot}%{homepath}/include ||:
 #cp -r %{_compiledir}/../src/connector/python        %{buildroot}%{homepath}/connector
@@ -123,12 +125,12 @@ if [ -f %{_compiledir}/build/bin/jemalloc-config ]; then
         cp %{_compiledir}/build/lib/libjemalloc.so.2 %{buildroot}%{homepath}/jemalloc/lib
         ln -sf libjemalloc.so.2 %{buildroot}%{homepath}/jemalloc/lib/libjemalloc.so
     fi
-    if [ -f %{_compiledir}/build/lib/libjemalloc.a ]; then
-        cp %{_compiledir}/build/lib/libjemalloc.a %{buildroot}%{homepath}/jemalloc/lib
-    fi
-    if [ -f %{_compiledir}/build/lib/libjemalloc_pic.a ]; then
-        cp %{_compiledir}/build/lib/libjemalloc_pic.a %{buildroot}%{homepath}/jemalloc/lib
-    fi
+#    if [ -f %{_compiledir}/build/lib/libjemalloc.a ]; then
+#        cp %{_compiledir}/build/lib/libjemalloc.a %{buildroot}%{homepath}/jemalloc/lib
+#    fi
+#    if [ -f %{_compiledir}/build/lib/libjemalloc_pic.a ]; then
+#        cp %{_compiledir}/build/lib/libjemalloc_pic.a %{buildroot}%{homepath}/jemalloc/lib
+#    fi
     if [ -f %{_compiledir}/build/lib/pkgconfig/jemalloc.pc ]; then
         cp %{_compiledir}/build/lib/pkgconfig/jemalloc.pc %{buildroot}%{homepath}/jemalloc/lib/pkgconfig
     fi
@@ -217,6 +219,7 @@ if [ $1 -eq 0 ];then
     ${csudo}rm -f ${inc_link_dir}/taos.h     || :
     ${csudo}rm -f ${inc_link_dir}/taosdef.h     || :
     ${csudo}rm -f ${inc_link_dir}/taoserror.h     || :
+    ${csudo}rm -f ${inc_link_dir}/tdef.h     || :
     ${csudo}rm -f ${inc_link_dir}/taosudf.h     || :    
     ${csudo}rm -f ${lib_link_dir}/libtaos.*  || :
 

@@ -152,6 +152,7 @@ void       *taosCacheIterGetKey(const SCacheIter *pIter, size_t *keyLen);
 void        taosCacheDestroyIter(SCacheIter *pIter);
 
 void taosCacheTimedRefreshLoop();
+void taosCacheTryExtendLifeSpan(SCacheObj *pCacheObj, void **data);
 
 #ifdef __cplusplus
 }

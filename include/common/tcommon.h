@@ -37,6 +37,13 @@ extern "C" {
 )
 // clang-format on
 
+typedef bool (*state_key_cmpr_fn)(void* pKey1, void* pKey2);
+
+typedef struct STableKeyInfo {
+  uint64_t uid;
+  uint64_t groupId;
+} STableKeyInfo;
+
 typedef struct SWinKey {
   uint64_t groupId;
   TSKEY    ts;
@@ -46,6 +53,11 @@ typedef struct SSessionKey {
   STimeWindow win;
   uint64_t    groupId;
 } SSessionKey;
+
+typedef struct SVersionRange {
+  uint64_t minVer;
+  uint64_t maxVer;
+} SVersionRange;
 
 static inline int winKeyCmprImpl(const void* pKey1, const void* pKey2) {
   SWinKey* pWin1 = (SWinKey*)pKey1;
@@ -82,7 +94,7 @@ typedef struct STuplePos {
       int32_t pageId;
       int32_t offset;
     };
-    STupleKey streamTupleKey;
+    SWinKey streamTupleKey;
   };
 } STuplePos;
 
@@ -124,10 +136,11 @@ static inline int STupleKeyCmpr(const void* pKey1, int kLen1, const void* pKey2,
 
 enum {
   TMQ_MSG_TYPE__DUMMY = 0,
-  TMQ_MSG_TYPE__POLL_RSP,
+  TMQ_MSG_TYPE__POLL_DATA_RSP,
   TMQ_MSG_TYPE__POLL_META_RSP,
   TMQ_MSG_TYPE__EP_RSP,
-  TMQ_MSG_TYPE__TAOSX_RSP,
+  TMQ_MSG_TYPE__POLL_DATA_META_RSP,
+  TMQ_MSG_TYPE__WALINFO_RSP,
   TMQ_MSG_TYPE__END_RSP,
 };
 
@@ -139,6 +152,8 @@ enum {
   STREAM_INPUT__DATA_RETRIEVE,
   STREAM_INPUT__GET_RES,
   STREAM_INPUT__CHECKPOINT,
+  STREAM_INPUT__CHECKPOINT_TRIGGER,
+  STREAM_INPUT__TRANS_STATE,
   STREAM_INPUT__REF_DATA_BLOCK,
   STREAM_INPUT__DESTROY,
 };
@@ -155,7 +170,9 @@ typedef enum EStreamType {
   STREAM_PULL_DATA,
   STREAM_PULL_OVER,
   STREAM_FILL_OVER,
+  STREAM_CHECKPOINT,
   STREAM_CREATE_CHILD_TABLE,
+  STREAM_TRANS_STATE,
 } EStreamType;
 
 #pragma pack(push, 1)
@@ -190,6 +207,7 @@ typedef struct SDataBlockInfo {
   SBlockID    id;
   int16_t     hasVarCol;
   int16_t     dataLoad;  // denote if the data is loaded or not
+  uint8_t     scanFlag;
 
   // TODO: optimize and remove following
   int64_t     version;    // used for stream, and need serialization
@@ -207,11 +225,6 @@ typedef struct SSDataBlock {
   SDataBlockInfo   info;
 } SSDataBlock;
 
-enum {
-  FETCH_TYPE__DATA = 0,
-  FETCH_TYPE__NONE,
-};
-
 typedef struct SVarColAttr {
   int32_t* offset;    // start position for each entry in the list
   uint32_t length;    // used buffer size that contain the valid data
@@ -228,6 +241,7 @@ typedef struct SColumnInfoData {
   };
   SColumnInfo info;     // column info
   bool        hasNull;  // if current column data has null value.
+  bool        reassigned; // if current column data is reassigned.
 } SColumnInfoData;
 
 typedef struct SQueryTableDataCond {

@@ -371,14 +371,13 @@ int32_t schChkUpdateRedirectCtx(SSchJob *pJob, SSchTask *pTask, SEpSet *pEpSet, 
     pCtx->roundTotal = pEpSet->numOfEps;
   }
 
-
   if (pCtx->roundTimes >= pCtx->roundTotal) {
     int64_t nowTs = taosGetTimestampMs();
     int64_t lastTime = nowTs - pCtx->startTs;
     if (lastTime > tsMaxRetryWaitTime) {
       SCH_TASK_DLOG("task no more redirect retry since timeout, now:%" PRId64 ", start:%" PRId64 ", max:%d, total:%d",
                     nowTs, pCtx->startTs, tsMaxRetryWaitTime, pCtx->totalTimes);
-      pJob->noMoreRetry = true;                    
+      pJob->noMoreRetry = true;
       SCH_ERR_RET(SCH_GET_REDIRECT_CODE(pJob, rspCode));
     }
 
@@ -418,7 +417,7 @@ void schResetTaskForRetry(SSchJob *pJob, SSchTask *pTask) {
   taosMemoryFreeClear(pTask->msg);
   pTask->msgLen = 0;
   pTask->lastMsgType = 0;
-  pTask->childReady = 0;      
+  pTask->childReady = 0;
   memset(&pTask->succeedAddr, 0, sizeof(pTask->succeedAddr));
 }
 
@@ -505,11 +504,11 @@ int32_t schHandleTaskSetRetry(SSchJob *pJob, SSchTask *pTask, SDataBuf *pData, i
     pLevel->taskExecDoneNum = 0;
     pLevel->taskLaunchedNum = 0;
   }
-  
+
   SCH_RESET_JOB_LEVEL_IDX(pJob);
-  
+
   code = schDoTaskRedirect(pJob, pTask, pData, rspCode);
-  
+
   taosMemoryFreeClear(pData->pData);
   taosMemoryFreeClear(pData->pEpSet);
 
@@ -627,7 +626,7 @@ int32_t schTaskCheckSetRetry(SSchJob *pJob, SSchTask *pTask, int32_t errCode, bo
                   pTask->maxRetryTimes);
     return TSDB_CODE_SUCCESS;
   }
-  
+
   if (TSDB_CODE_SCH_TIMEOUT_ERROR == errCode) {
     pTask->maxExecTimes++;
     pTask->maxRetryTimes++;
@@ -745,7 +744,6 @@ int32_t schSetTaskCandidateAddrs(SSchJob *pJob, SSchTask *pTask) {
     return TSDB_CODE_SUCCESS;
   }
 
-  pTask->candidateIdx = 0;
   pTask->candidateAddrs = taosArrayInit(SCHEDULE_DEFAULT_MAX_NODE_NUM, sizeof(SQueryNodeAddr));
   if (NULL == pTask->candidateAddrs) {
     SCH_TASK_ELOG("taosArrayInit %d condidate addrs failed", SCHEDULE_DEFAULT_MAX_NODE_NUM);
@@ -765,10 +763,12 @@ int32_t schSetTaskCandidateAddrs(SSchJob *pJob, SSchTask *pTask) {
 
   if (SCH_IS_DATA_BIND_TASK(pTask)) {
     SCH_TASK_ELOG("no execNode specifed for data src task, numOfEps:%d", pTask->plan->execNode.epSet.numOfEps);
-    SCH_ERR_RET(TSDB_CODE_APP_ERROR);
+    SCH_ERR_RET(TSDB_CODE_MND_INVALID_SCHEMA_VER);
   }
 
   SCH_ERR_RET(schSetAddrsFromNodeList(pJob, pTask));
+
+  pTask->candidateIdx = taosRand() % taosArrayGetSize(pTask->candidateAddrs);
 
   /*
     for (int32_t i = 0; i < job->dataSrcEps.numOfEps && addNum < SCH_MAX_CANDIDATE_EP_NUM; ++i) {
@@ -861,7 +861,9 @@ void schDropTaskOnExecNode(SSchJob *pJob, SSchTask *pTask) {
   while (nodeInfo) {
     if (nodeInfo->handle) {
       SCH_SET_TASK_HANDLE(pTask, nodeInfo->handle);
-      schBuildAndSendMsg(pJob, pTask, &nodeInfo->addr, TDMT_SCH_DROP_TASK);
+
+      void *pExecId = taosHashGetKey(nodeInfo, NULL);
+      schBuildAndSendMsg(pJob, pTask, &nodeInfo->addr, TDMT_SCH_DROP_TASK, pExecId);
       SCH_TASK_DLOG("start to drop task's %dth execNode", i);
     } else {
       SCH_TASK_DLOG("no need to drop task %dth execNode", i);
@@ -872,6 +874,32 @@ void schDropTaskOnExecNode(SSchJob *pJob, SSchTask *pTask) {
   }
 
   SCH_TASK_DLOG("task has been dropped on %d exec nodes", size);
+}
+
+int32_t schNotifyTaskOnExecNode(SSchJob *pJob, SSchTask *pTask, ETaskNotifyType type) {
+  int32_t size = (int32_t)taosHashGetSize(pTask->execNodes);
+  if (size <= 0) {
+    SCH_TASK_DLOG("task no exec address to notify, status:%s", SCH_GET_TASK_STATUS_STR(pTask));
+    return TSDB_CODE_SUCCESS;
+  }
+
+  int32_t       i = 0;
+  SSchNodeInfo *nodeInfo = taosHashIterate(pTask->execNodes, NULL);
+  while (nodeInfo) {
+    if (nodeInfo->handle) {
+      SCH_SET_TASK_HANDLE(pTask, nodeInfo->handle);
+      SCH_ERR_RET(schBuildAndSendMsg(pJob, pTask, &nodeInfo->addr, TDMT_SCH_TASK_NOTIFY, &type));
+      SCH_TASK_DLOG("start to notify %d to task's %dth execNode", type, i);
+    } else {
+      SCH_TASK_DLOG("no need to notify %d to task %dth execNode", type, i);
+    }
+
+    ++i;
+    nodeInfo = taosHashIterate(pTask->execNodes, nodeInfo);
+  }
+
+  SCH_TASK_DLOG("task has been notified %d on %d exec nodes", type, size);
+  return TSDB_CODE_SUCCESS;
 }
 
 int32_t schProcessOnTaskStatusRsp(SQueryNodeEpId *pEpId, SArray *pStatusList) {
@@ -961,7 +989,6 @@ int32_t schHandleExplainRes(SArray *pExplainRes) {
     localRsp->rsp.numOfPlans = 0;
     localRsp->rsp.subplanInfo = NULL;
     pTask = NULL;
-    pJob = NULL;
   }
 
 _return:
@@ -1001,7 +1028,7 @@ int32_t schLaunchRemoteTask(SSchJob *pJob, SSchTask *pTask) {
     SCH_ERR_RET(schEnsureHbConnection(pJob, pTask));
   }
 
-  SCH_RET(schBuildAndSendMsg(pJob, pTask, NULL, plan->msgType));
+  SCH_RET(schBuildAndSendMsg(pJob, pTask, NULL, plan->msgType, NULL));
 }
 
 int32_t schLaunchLocalTask(SSchJob *pJob, SSchTask *pTask) {
@@ -1238,8 +1265,32 @@ void schDropTaskInHashList(SSchJob *pJob, SHashObj *list) {
   }
 }
 
+int32_t schNotifyTaskInHashList(SSchJob *pJob, SHashObj *list, ETaskNotifyType type, SSchTask *pCurrTask) {
+  int32_t code = TSDB_CODE_SUCCESS;
+
+  SCH_ERR_RET(schNotifyTaskOnExecNode(pJob, pCurrTask, type));
+
+  void *pIter = taosHashIterate(list, NULL);
+  while (pIter) {
+    SSchTask *pTask = *(SSchTask **)pIter;
+    if (pTask != pCurrTask) {
+      SCH_LOCK_TASK(pTask);
+      code = schNotifyTaskOnExecNode(pJob, pTask, type);
+      SCH_UNLOCK_TASK(pTask);
+
+      if (TSDB_CODE_SUCCESS != code) {
+        break;
+      }
+    }
+
+    pIter = taosHashIterate(list, pIter);
+  }
+
+  SCH_RET(code);
+}
+
 int32_t schExecRemoteFetch(SSchJob *pJob, SSchTask *pTask) {
-  SCH_RET(schBuildAndSendMsg(pJob, pJob->fetchTask, &pJob->resNode, SCH_FETCH_TYPE(pJob->fetchTask)));
+  SCH_RET(schBuildAndSendMsg(pJob, pJob->fetchTask, &pJob->resNode, SCH_FETCH_TYPE(pJob->fetchTask), NULL));
 }
 
 int32_t schExecLocalFetch(SSchJob *pJob, SSchTask *pTask) {

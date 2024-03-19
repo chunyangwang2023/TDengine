@@ -37,6 +37,7 @@
 #include "monitor.h"
 #include "qnode.h"
 #include "sync.h"
+#include "tfs.h"
 #include "wal.h"
 
 #include "libs/function/tudf.h"
@@ -86,9 +87,11 @@ typedef enum {
 typedef int32_t (*ProcessCreateNodeFp)(EDndNodeType ntype, SRpcMsg *pMsg);
 typedef int32_t (*ProcessDropNodeFp)(EDndNodeType ntype, SRpcMsg *pMsg);
 typedef void (*SendMonitorReportFp)();
+typedef void (*SendAuditRecordsFp)();
 typedef void (*GetVnodeLoadsFp)(SMonVloadInfo *pInfo);
 typedef void (*GetMnodeLoadsFp)(SMonMloadInfo *pInfo);
 typedef void (*GetQnodeLoadsFp)(SQnodeLoad *pInfo);
+typedef int32_t (*ProcessAlterNodeTypeFp)(EDndNodeType ntype, SRpcMsg *pMsg);
 
 typedef struct {
   int32_t        dnodeId;
@@ -104,17 +107,22 @@ typedef struct {
   SHashObj      *dnodeHash;
   TdThreadRwlock lock;
   SMsgCb         msgCb;
+  bool           validMnodeEps;
 } SDnodeData;
 
 typedef struct {
   const char         *path;
   const char         *name;
+  STfs               *pTfs;
   SDnodeData         *pData;
   SMsgCb              msgCb;
   ProcessCreateNodeFp processCreateNodeFp;
+  ProcessAlterNodeTypeFp processAlterNodeTypeFp;
   ProcessDropNodeFp   processDropNodeFp;
   SendMonitorReportFp sendMonitorReportFp;
+  SendAuditRecordsFp  sendAuditRecordFp;
   GetVnodeLoadsFp     getVnodeLoadsFp;
+  GetVnodeLoadsFp     getVnodeLoadsLiteFp;
   GetMnodeLoadsFp     getMnodeLoadsFp;
   GetQnodeLoadsFp     getQnodeLoadsFp;
 } SMgmtInputOpt;
@@ -132,6 +140,8 @@ typedef int32_t (*NodeCreateFp)(const SMgmtInputOpt *pInput, SRpcMsg *pMsg);
 typedef int32_t (*NodeDropFp)(const SMgmtInputOpt *pInput, SRpcMsg *pMsg);
 typedef int32_t (*NodeRequireFp)(const SMgmtInputOpt *pInput, bool *required);
 typedef SArray *(*NodeGetHandlesFp)();  // array of SMgmtHandle
+typedef bool (*NodeIsCatchUpFp)(void *pMgmt);
+typedef bool (*NodeRole)(void *pMgmt);
 
 typedef struct {
   NodeOpenFp       openFp;
@@ -142,6 +152,8 @@ typedef struct {
   NodeDropFp       dropFp;
   NodeRequireFp    requiredFp;
   NodeGetHandlesFp getHandlesFp;
+  NodeIsCatchUpFp  isCatchUpFp;
+  NodeRole         nodeRoleFp;
 } SMgmtFunc;
 
 typedef struct {

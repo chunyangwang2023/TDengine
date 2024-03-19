@@ -24,6 +24,14 @@ static int32_t dmStartMgmt(SDnodeMgmt *pMgmt) {
   if (dmStartMonitorThread(pMgmt) != 0) {
     return -1;
   }
+#ifdef TD_ENTERPRISE
+  if (dmStartNotifyThread(pMgmt) != 0) {
+    return -1;
+  }
+#endif
+  if (dmStartAuditThread(pMgmt) != 0) {
+    return -1;
+  }
   if (dmStartCrashReportThread(pMgmt) != 0) {
     return -1;
   }
@@ -35,7 +43,11 @@ static void dmStopMgmt(SDnodeMgmt *pMgmt) {
   pMgmt->pData->stopped = true;
 #if !defined(TD_MC)
   dmStopMonitorThread(pMgmt);
+  dmStopAuditThread(pMgmt);
   dmStopStatusThread(pMgmt);
+#ifdef TD_ENTERPRISE
+  dmStopNotifyThread(pMgmt);
+#endif
   dmStopCrashReportThread(pMgmt);
 #endif
 }
@@ -52,9 +64,12 @@ static int32_t dmOpenMgmt(SMgmtInputOpt *pInput, SMgmtOutputOpt *pOutput) {
   pMgmt->path = pInput->path;
   pMgmt->name = pInput->name;
   pMgmt->processCreateNodeFp = pInput->processCreateNodeFp;
+  pMgmt->processAlterNodeTypeFp = pInput->processAlterNodeTypeFp;
   pMgmt->processDropNodeFp = pInput->processDropNodeFp;
   pMgmt->sendMonitorReportFp = pInput->sendMonitorReportFp;
+  pMgmt->sendAuditRecordsFp = pInput->sendAuditRecordFp;
   pMgmt->getVnodeLoadsFp = pInput->getVnodeLoadsFp;
+  pMgmt->getVnodeLoadsLiteFp = pInput->getVnodeLoadsLiteFp;
   pMgmt->getMnodeLoadsFp = pInput->getMnodeLoadsFp;
   pMgmt->getQnodeLoadsFp = pInput->getQnodeLoadsFp;
 

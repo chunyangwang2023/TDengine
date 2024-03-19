@@ -29,6 +29,7 @@
 #include "tmsg.h"
 #include "trpc.h"
 #include "tmisce.h"
+#include "tversion.h"
 // clang-format on
 
 #define UDFD_MAX_SCRIPT_PLUGINS 64
@@ -61,7 +62,6 @@ const char *udfdCPluginUdfInitLoadInitDestoryFuncs(SUdfCPluginCtx *udfCtx, const
 
   char  destroyFuncName[TSDB_FUNC_NAME_LEN + 9] = {0};
   char *destroySuffix = "_destroy";
-  strcpy(destroyFuncName, udfName);
   snprintf(destroyFuncName, sizeof(destroyFuncName), "%s%s", udfName, destroySuffix);
   uv_dlsym(&udfCtx->lib, destroyFuncName, (void **)(&udfCtx->destroyFunc));
   return udfName;
@@ -69,7 +69,7 @@ const char *udfdCPluginUdfInitLoadInitDestoryFuncs(SUdfCPluginCtx *udfCtx, const
 
 void udfdCPluginUdfInitLoadAggFuncs(SUdfCPluginCtx *udfCtx, const char *udfName) {
   char processFuncName[TSDB_FUNC_NAME_LEN] = {0};
-  strcpy(processFuncName, udfName);
+  snprintf(processFuncName, sizeof(processFuncName), "%s", udfName);
   uv_dlsym(&udfCtx->lib, processFuncName, (void **)(&udfCtx->aggProcFunc));
 
   char  startFuncName[TSDB_FUNC_NAME_LEN + 7] = {0};
@@ -94,6 +94,7 @@ int32_t udfdCPluginUdfInit(SScriptUdfInfo *udf, void **pUdfCtx) {
   err = uv_dlopen(udf->path, &udfCtx->lib);
   if (err != 0) {
     fnError("can not load library %s. error: %s", udf->path, uv_strerror(err));
+    taosMemoryFree(udfCtx);
     return TSDB_CODE_UDF_LOAD_UDF_FAILURE;
   }
   const char *udfName = udf->name;
@@ -102,7 +103,7 @@ int32_t udfdCPluginUdfInit(SScriptUdfInfo *udf, void **pUdfCtx) {
 
   if (udf->funcType == UDF_FUNC_TYPE_SCALAR) {
     char processFuncName[TSDB_FUNC_NAME_LEN] = {0};
-    strcpy(processFuncName, udfName);
+    snprintf(processFuncName, sizeof(processFuncName), "%s", udfName);
     uv_dlsym(&udfCtx->lib, processFuncName, (void **)(&udfCtx->scalarProcFunc));
   } else if (udf->funcType == UDF_FUNC_TYPE_AGG) {
     udfdCPluginUdfInitLoadAggFuncs(udfCtx, udfName);
@@ -377,9 +378,9 @@ int32_t udfdInitializePythonPlugin(SUdfScriptPlugin *plugin) {
                                                  "pyUdfDestroy",   "pyUdfScalarProc", "pyUdfAggStart",
                                                  "pyUdfAggFinish", "pyUdfAggProc",    "pyUdfAggMerge"};
   void      **funcs[UDFD_MAX_PLUGIN_FUNCS] = {
-      (void **)&plugin->openFunc,         (void **)&plugin->closeFunc,         (void **)&plugin->udfInitFunc,
-      (void **)&plugin->udfDestroyFunc,   (void **)&plugin->udfScalarProcFunc, (void **)&plugin->udfAggStartFunc,
-      (void **)&plugin->udfAggFinishFunc, (void **)&plugin->udfAggProcFunc,    (void **)&plugin->udfAggMergeFunc};
+           (void **)&plugin->openFunc,         (void **)&plugin->closeFunc,         (void **)&plugin->udfInitFunc,
+           (void **)&plugin->udfDestroyFunc,   (void **)&plugin->udfScalarProcFunc, (void **)&plugin->udfAggStartFunc,
+           (void **)&plugin->udfAggFinishFunc, (void **)&plugin->udfAggProcFunc,    (void **)&plugin->udfAggMergeFunc};
   int32_t err = udfdLoadSharedLib(plugin->libPath, &plugin->lib, funcName, funcs, UDFD_MAX_PLUGIN_FUNCS);
   if (err != 0) {
     fnError("can not load python plugin. lib path %s", plugin->libPath);
@@ -587,7 +588,7 @@ SUdf *udfdNewUdf(const char *udfName) {
 SUdf *udfdGetOrCreateUdf(const char *udfName) {
   uv_mutex_lock(&global.udfsMutex);
   SUdf  **pUdfHash = taosHashGet(global.udfsHash, udfName, strlen(udfName));
-  int64_t currTime = taosGetTimestampSec();
+  int64_t currTime = taosGetTimestampMs();
   bool    expired = false;
   if (pUdfHash) {
     expired = currTime - (*pUdfHash)->lastFetchTime > 10 * 1000;  // 10s
@@ -600,9 +601,9 @@ SUdf *udfdGetOrCreateUdf(const char *udfName) {
       return udf;
     } else {
       (*pUdfHash)->expired = true;
-      taosHashRemove(global.udfsHash, udfName, strlen(udfName));
       fnInfo("udfd expired, check for new version. existing udf %s udf version %d, udf created time %" PRIx64,
              (*pUdfHash)->name, (*pUdfHash)->version, (*pUdfHash)->createdTime);
+      taosHashRemove(global.udfsHash, udfName, strlen(udfName));
     }
   }
 
@@ -684,6 +685,8 @@ void udfdProcessCallRequest(SUvUdfWork *uvUdf, SUdfRequest *request) {
       output.colMeta.type = udf->outputType;
       output.colMeta.precision = 0;
       output.colMeta.scale = 0;
+      udfColEnsureCapacity(&output, call->block.info.rows);
+
       SUdfDataBlock input = {0};
       convertDataBlockToUdfDataBlock(&call->block, &input);
       code = udf->scriptPlugin->udfScalarProcFunc(&input, &output, udf->scriptUdfCtx);
@@ -838,14 +841,14 @@ void udfdGetFuncBodyPath(const SUdf *udf, char *path) {
 
 int32_t udfdSaveFuncBodyToFile(SFuncInfo *pFuncInfo, SUdf *udf) {
   if (!osDataSpaceAvailable()) {
-    terrno = TSDB_CODE_NO_AVAIL_DISK;
+    terrno = TSDB_CODE_NO_DISKSPACE;
     fnError("udfd create shared library failed since %s", terrstr(terrno));
     return terrno;
   }
 
   char path[PATH_MAX] = {0};
   udfdGetFuncBodyPath(udf, path);
-  bool fileExist = !(taosStatFile(path, NULL, NULL) < 0);
+  bool fileExist = !(taosStatFile(path, NULL, NULL, NULL) < 0);
   if (fileExist) {
     strncpy(udf->path, path, PATH_MAX);
     fnInfo("udfd func body file. reuse existing file %s", path);
@@ -963,46 +966,12 @@ int32_t udfdFillUdfInfoFromMNode(void *clientRpc, char *udfName, SUdf *udf) {
   return code;
 }
 
-int32_t udfdConnectToMnode() {
-  SConnectReq connReq = {0};
-  connReq.connType = CONN_TYPE__UDFD;
-  tstrncpy(connReq.app, "udfd", sizeof(connReq.app));
-  tstrncpy(connReq.user, TSDB_DEFAULT_USER, sizeof(connReq.user));
-  char pass[TSDB_PASSWORD_LEN + 1] = {0};
-  taosEncryptPass_c((uint8_t *)(TSDB_DEFAULT_PASS), strlen(TSDB_DEFAULT_PASS), pass);
-  tstrncpy(connReq.passwd, pass, sizeof(connReq.passwd));
-  connReq.pid = taosGetPId();
-  connReq.startTime = taosGetTimestampMs();
-  strcpy(connReq.sVer, version);
-
-  int32_t contLen = tSerializeSConnectReq(NULL, 0, &connReq);
-  void   *pReq = rpcMallocCont(contLen);
-  tSerializeSConnectReq(pReq, contLen, &connReq);
-
-  SUdfdRpcSendRecvInfo *msgInfo = taosMemoryCalloc(1, sizeof(SUdfdRpcSendRecvInfo));
-  msgInfo->rpcType = UDFD_RPC_MNODE_CONNECT;
-  uv_sem_init(&msgInfo->resultSem, 0);
-
-  SRpcMsg rpcMsg = {0};
-  rpcMsg.msgType = TDMT_MND_CONNECT;
-  rpcMsg.pCont = pReq;
-  rpcMsg.contLen = contLen;
-  rpcMsg.info.ahandle = msgInfo;
-  rpcSendRequest(global.clientRpc, &global.mgmtEp.epSet, &rpcMsg, NULL);
-
-  uv_sem_wait(&msgInfo->resultSem);
-  int32_t code = msgInfo->code;
-  uv_sem_destroy(&msgInfo->resultSem);
-  taosMemoryFree(msgInfo);
-  return code;
-}
-
 static bool udfdRpcRfp(int32_t code, tmsg_t msgType) {
   if (code == TSDB_CODE_RPC_NETWORK_UNAVAIL || code == TSDB_CODE_RPC_BROKEN_LINK || code == TSDB_CODE_SYN_NOT_LEADER ||
       code == TSDB_CODE_RPC_SOMENODE_NOT_CONNECTED || code == TSDB_CODE_SYN_RESTORING ||
       code == TSDB_CODE_MNODE_NOT_FOUND || code == TSDB_CODE_APP_IS_STARTING || code == TSDB_CODE_APP_IS_STOPPING) {
     if (msgType == TDMT_SCH_QUERY || msgType == TDMT_SCH_MERGE_QUERY || msgType == TDMT_SCH_FETCH ||
-        msgType == TDMT_SCH_MERGE_FETCH) {
+        msgType == TDMT_SCH_MERGE_FETCH || msgType == TDMT_SCH_TASK_NOTIFY) {
       return false;
     }
     return true;
@@ -1070,7 +1039,7 @@ int32_t udfdOpenClientRpc() {
   connLimitNum = TMIN(connLimitNum, 500);
   rpcInit.connLimitNum = connLimitNum;
   rpcInit.timeToGetConn = tsTimeToGetAvailableConn;
-
+  taosVersionStrToInt(version, &(rpcInit.compatibilityVer));
   global.clientRpc = rpcOpen(&rpcInit);
   if (global.clientRpc == NULL) {
     fnError("failed to init dnode rpc client");
@@ -1376,23 +1345,6 @@ static int32_t udfdRun() {
   return 0;
 }
 
-void udfdConnectMnodeThreadFunc(void *args) {
-  int32_t retryMnodeTimes = 0;
-  int32_t code = 0;
-  while (retryMnodeTimes++ <= TSDB_MAX_REPLICA) {
-    uv_sleep(100 * (1 << retryMnodeTimes));
-    code = udfdConnectToMnode();
-    if (code == 0) {
-      break;
-    }
-    fnError("udfd can not connect to mnode, code: %s. retry", tstrerror(code));
-  }
-
-  if (code != 0) {
-    fnError("udfd can not connect to mnode");
-  }
-}
-
 int32_t udfdInitResidentFuncs() {
   if (strlen(tsUdfdResFuncs) == 0) {
     return TSDB_CODE_SUCCESS;
@@ -1494,9 +1446,6 @@ int main(int argc, char *argv[]) {
   }
 
   udfdInitResidentFuncs();
-
-  uv_thread_t mnodeConnectThread;
-  uv_thread_create(&mnodeConnectThread, udfdConnectMnodeThreadFunc, NULL);
 
   udfdRun();
 

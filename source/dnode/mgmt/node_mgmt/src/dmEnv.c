@@ -15,8 +15,45 @@
 
 #define _DEFAULT_SOURCE
 #include "dmMgmt.h"
+#include "audit.h"
 
-static SDnode globalDnode = {0};
+#define STR_CASE_CMP(s, d)   (0 == strcasecmp((s), (d)))
+#define STR_STR_CMP(s, d)    (strstr((s), (d)))
+#define STR_INT_CMP(s, d, c) (taosStr2Int32(s, 0, 10) c(d))
+#define STR_STR_SIGN         ("ia")
+#define DM_INIT_MON()                   \
+  do {                                  \
+    code = (int32_t)(2147483648 | 298); \
+    strncpy(stName, tsVersionName, 64); \
+    monCfg.maxLogs = tsMonitorMaxLogs;  \
+    monCfg.port = tsMonitorPort;        \
+    monCfg.server = tsMonitorFqdn;      \
+    monCfg.comp = tsMonitorComp;        \
+    if (monInit(&monCfg) != 0) {        \
+      if (terrno != 0) code = terrno;   \
+      goto _exit;                       \
+    }                                   \
+  } while (0)
+
+#define DM_INIT_AUDIT()                 \
+  do {                                  \
+    auditCfg.port = tsMonitorPort;        \
+    auditCfg.server = tsMonitorFqdn;      \
+    auditCfg.comp = tsMonitorComp;      \
+    if (auditInit(&auditCfg) != 0) {    \
+      return -1;                        \
+    }                                   \
+  } while (0)
+
+#define DM_ERR_RTN(c) \
+  do {                \
+    code = (c);       \
+    goto _exit;       \
+  } while (0)
+
+static SDnode      globalDnode = {0};
+static const char *dmOS[10] = {"Ubuntu",  "CentOS Linux", "Red Hat", "Debian GNU", "CoreOS",
+                               "FreeBSD", "openSUSE",     "SLES",    "Fedora",     "macOS"};
 
 SDnode *dmInstance() { return &globalDnode; }
 
@@ -37,40 +74,64 @@ static int32_t dmInitSystem() {
 }
 
 static int32_t dmInitMonitor() {
+  int32_t code = 0;
   SMonCfg monCfg = {0};
-  monCfg.maxLogs = tsMonitorMaxLogs;
-  monCfg.port = tsMonitorPort;
-  monCfg.server = tsMonitorFqdn;
-  monCfg.comp = tsMonitorComp;
-  if (monInit(&monCfg) != 0) {
-    dError("failed to init monitor since %s", terrstr());
-    return -1;
+  char    reName[64] = {0};
+  char    stName[64] = {0};
+  char    ver[64] = {0};
+
+  DM_INIT_MON();
+
+  if (STR_STR_CMP(stName, STR_STR_SIGN)) {
+    DM_ERR_RTN(0);
   }
+  if (taosGetOsReleaseName(reName, stName, ver, 64) != 0) {
+    DM_ERR_RTN(code);
+  }
+  if (STR_CASE_CMP(stName, dmOS[0])) {
+    if (STR_INT_CMP(ver, 17, >)) {
+      DM_ERR_RTN(0);
+    }
+  } else if (STR_CASE_CMP(stName, dmOS[1])) {
+    if (STR_INT_CMP(ver, 6, >)) {
+      DM_ERR_RTN(0);
+    }
+  } else if (STR_STR_CMP(stName, dmOS[2]) || STR_STR_CMP(stName, dmOS[3]) || STR_STR_CMP(stName, dmOS[4]) ||
+             STR_STR_CMP(stName, dmOS[5]) || STR_STR_CMP(stName, dmOS[6]) || STR_STR_CMP(stName, dmOS[7]) ||
+             STR_STR_CMP(stName, dmOS[8]) || STR_STR_CMP(stName, dmOS[9])) {
+    DM_ERR_RTN(0);
+  }
+
+_exit:
+  if (code) terrno = code;
+  return code;
+}
+
+static int32_t dmInitAudit() {
+  SAuditCfg auditCfg = {0};
+
+  DM_INIT_AUDIT();
+
   return 0;
+}
+
+static bool dmDataSpaceAvailable() {
+  SDnode *pDnode = dmInstance();
+  if (pDnode->pTfs) {
+    return tfsDiskSpaceAvailable(pDnode->pTfs, 0);
+  }
+  if (!osDataSpaceAvailable()) {
+    dError("data disk space unavailable, i.e. %s", tsDataDir);
+    return false;
+  }
+  return true;
 }
 
 static bool dmCheckDiskSpace() {
   osUpdate();
-  // sufficiency
-  if (!osDataSpaceSufficient()) {
-    dWarn("free data disk size: %f GB, not sufficient, expected %f GB at least",
-          (double)tsDataSpace.size.avail / 1024.0 / 1024.0 / 1024.0,
-          (double)tsDataSpace.reserved / 1024.0 / 1024.0 / 1024.0);
-  }
-  if (!osLogSpaceSufficient()) {
-    dWarn("free log disk size: %f GB, not sufficient, expected %f GB at least",
-          (double)tsLogSpace.size.avail / 1024.0 / 1024.0 / 1024.0,
-          (double)tsLogSpace.reserved / 1024.0 / 1024.0 / 1024.0);
-  }
-  if (!osTempSpaceSufficient()) {
-    dWarn("free temp disk size: %f GB, not sufficient, expected %f GB at least",
-          (double)tsTempSpace.size.avail / 1024.0 / 1024.0 / 1024.0,
-          (double)tsTempSpace.reserved / 1024.0 / 1024.0 / 1024.0);
-  }
   // availability
   bool ret = true;
-  if (!osDataSpaceAvailable()) {
-    dError("data disk space unavailable, i.e. %s", tsDataDir);
+  if (!dmDataSpaceAvailable()) {
     terrno = TSDB_CODE_NO_DISKSPACE;
     ret = false;
   }
@@ -87,6 +148,34 @@ static bool dmCheckDiskSpace() {
   return ret;
 }
 
+int32_t dmDiskInit() {
+  SDnode  *pDnode = dmInstance();
+  SDiskCfg dCfg = {0};
+  tstrncpy(dCfg.dir, tsDataDir, TSDB_FILENAME_LEN);
+  dCfg.level = 0;
+  dCfg.primary = 1;
+  SDiskCfg *pDisks = tsDiskCfg;
+  int32_t   numOfDisks = tsDiskCfgNum;
+  if (numOfDisks <= 0 || pDisks == NULL) {
+    pDisks = &dCfg;
+    numOfDisks = 1;
+  }
+
+  pDnode->pTfs = tfsOpen(pDisks, numOfDisks);
+  if (pDnode->pTfs == NULL) {
+    dError("failed to init tfs since %s", terrstr());
+    return -1;
+  }
+  return 0;
+}
+
+int32_t dmDiskClose() {
+  SDnode *pDnode = dmInstance();
+  tfsClose(pDnode->pTfs);
+  pDnode->pTfs = NULL;
+  return 0;
+}
+
 static bool dmCheckDataDirVersion() {
   char checkDataDirJsonFileName[PATH_MAX] = {0};
   snprintf(checkDataDirJsonFileName, PATH_MAX, "%s/dnode/dnodeCfg.json", tsDataDir);
@@ -100,11 +189,13 @@ static bool dmCheckDataDirVersion() {
 
 int32_t dmInit() {
   dInfo("start to init dnode env");
+  if (dmDiskInit() != 0) return -1;
   if (!dmCheckDataDirVersion()) return -1;
   if (!dmCheckDiskSpace()) return -1;
   if (dmCheckRepeatInit(dmInstance()) != 0) return -1;
   if (dmInitSystem() != 0) return -1;
   if (dmInitMonitor() != 0) return -1;
+  if (dmInitAudit() != 0) return -1;
   if (dmInitDnode(dmInstance()) != 0) return -1;
 
   dInfo("dnode env is initialized");
@@ -129,11 +220,13 @@ void dmCleanup() {
   dmCloseNodes(pDnode);
   dmCleanupDnode(pDnode);
   monCleanup();
+  auditCleanup();
   syncCleanUp();
   walCleanUp();
   udfcClose();
   udfStopUdfd();
   taosStopCacheRefreshWorker();
+  dmDiskClose();
   dInfo("dnode env is cleaned up");
 
 #if !defined(TD_MC)
@@ -175,6 +268,8 @@ static int32_t dmProcessCreateNodeReq(EDndNodeType ntype, SRpcMsg *pMsg) {
     return -1;
   }
 
+  dInfo("start to process create-node-request");
+
   pWrapper = &pDnode->wrappers[ntype];
   if (taosMkDir(pWrapper->path) != 0) {
     dmReleaseWrapper(pWrapper);
@@ -184,6 +279,75 @@ static int32_t dmProcessCreateNodeReq(EDndNodeType ntype, SRpcMsg *pMsg) {
   }
 
   taosThreadMutexLock(&pDnode->mutex);
+  SMgmtInputOpt input = dmBuildMgmtInputOpt(pWrapper);
+
+  dInfo("node:%s, start to create", pWrapper->name);
+  int32_t code = (*pWrapper->func.createFp)(&input, pMsg);
+  if (code != 0) {
+    dError("node:%s, failed to create since %s", pWrapper->name, terrstr());
+  } else {
+    dInfo("node:%s, has been created", pWrapper->name);
+    code = dmOpenNode(pWrapper);
+    if (code == 0) {
+      code = dmStartNode(pWrapper);
+    }
+    pWrapper->deployed = true;
+    pWrapper->required = true;
+  }
+
+  taosThreadMutexUnlock(&pDnode->mutex);
+  return code;
+}
+
+static int32_t dmProcessAlterNodeTypeReq(EDndNodeType ntype, SRpcMsg *pMsg) {
+  SDnode *pDnode = dmInstance();
+
+  SMgmtWrapper *pWrapper = dmAcquireWrapper(pDnode, ntype);
+  if (pWrapper == NULL) {
+    dError("fail to process alter node type since node not exist");
+    return -1;
+  }
+  dmReleaseWrapper(pWrapper);
+
+  dInfo("node:%s, start to process alter-node-type-request", pWrapper->name);
+
+  pWrapper = &pDnode->wrappers[ntype];
+
+  if(pWrapper->func.nodeRoleFp != NULL){
+    ESyncRole role = (*pWrapper->func.nodeRoleFp)(pWrapper->pMgmt);
+    dInfo("node:%s, checking node role:%d", pWrapper->name, role);
+    if(role == TAOS_SYNC_ROLE_VOTER){
+      dError("node:%s, failed to alter node type since node already is role:%d", pWrapper->name, role);
+      terrno = TSDB_CODE_MNODE_ALREADY_IS_VOTER;
+      return -1;
+    }
+  }
+
+  if(pWrapper->func.isCatchUpFp != NULL){
+    dInfo("node:%s, checking node catch up", pWrapper->name);
+    if((*pWrapper->func.isCatchUpFp)(pWrapper->pMgmt) != 1){
+      terrno = TSDB_CODE_MNODE_NOT_CATCH_UP;
+      return -1;
+    }
+  }
+
+  dInfo("node:%s, catched up leader, continue to process alter-node-type-request", pWrapper->name);
+
+  taosThreadMutexLock(&pDnode->mutex);
+
+  dInfo("node:%s, stopping node", pWrapper->name);
+  dmStopNode(pWrapper);
+  dInfo("node:%s, closing node", pWrapper->name);
+  dmCloseNode(pWrapper);
+
+  pWrapper = &pDnode->wrappers[ntype];
+  if (taosMkDir(pWrapper->path) != 0) {
+    dmReleaseWrapper(pWrapper);
+    terrno = TAOS_SYSTEM_ERROR(errno);
+    dError("failed to create dir:%s since %s", pWrapper->path, terrstr());
+    return -1;
+  }
+
   SMgmtInputOpt input = dmBuildMgmtInputOpt(pWrapper);
 
   dInfo("node:%s, start to create", pWrapper->name);
@@ -255,11 +419,15 @@ SMgmtInputOpt dmBuildMgmtInputOpt(SMgmtWrapper *pWrapper) {
   SMgmtInputOpt opt = {
       .path = pWrapper->path,
       .name = pWrapper->name,
+      .pTfs = pWrapper->pDnode->pTfs,
       .pData = &pWrapper->pDnode->data,
       .processCreateNodeFp = dmProcessCreateNodeReq,
+      .processAlterNodeTypeFp = dmProcessAlterNodeTypeReq,
       .processDropNodeFp = dmProcessDropNodeReq,
       .sendMonitorReportFp = dmSendMonitorReport,
+      .sendAuditRecordFp = auditSendRecordsInBatch,
       .getVnodeLoadsFp = dmGetVnodeLoads,
+      .getVnodeLoadsLiteFp = dmGetVnodeLoadsLite,
       .getMnodeLoadsFp = dmGetMnodeLoads,
       .getQnodeLoadsFp = dmGetQnodeLoads,
   };

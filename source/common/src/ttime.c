@@ -25,46 +25,6 @@
 
 #include "tlog.h"
 
-/*
- * mktime64 - Converts date to seconds.
- * Converts Gregorian date to seconds since 1970-01-01 00:00:00.
- * Assumes input in normal date format, i.e. 1980-12-31 23:59:59
- * => year=1980, mon=12, day=31, hour=23, min=59, sec=59.
- *
- * [For the Julian calendar (which was used in Russia before 1917,
- * Britain & colonies before 1752, anywhere else before 1582,
- * and is still in use by some communities) leave out the
- * -year/100+year/400 terms, and add 10.]
- *
- * This algorithm was first published by Gauss (I think).
- *
- * A leap second can be indicated by calling this function with sec as
- * 60 (allowable under ISO 8601).  The leap second is treated the same
- * as the following second since they don't exist in UNIX time.
- *
- * An encoding of midnight at the end of the day as 24:00:00 - ie. midnight
- * tomorrow - (allowable under ISO 8601) is supported.
- */
-static int64_t user_mktime64(const uint32_t year0, const uint32_t mon0, const uint32_t day, const uint32_t hour,
-                             const uint32_t min, const uint32_t sec, int64_t time_zone) {
-  uint32_t mon = mon0, year = year0;
-
-  /* 1..12 -> 11,12,1..10 */
-  if (0 >= (int32_t)(mon -= 2)) {
-    mon += 12; /* Puts Feb last since it has leap day */
-    year -= 1;
-  }
-
-  // int64_t res = (((((int64_t) (year/4 - year/100 + year/400 + 367*mon/12 + day) +
-  //                year*365 - 719499)*24 + hour)*60 + min)*60 + sec);
-  int64_t res;
-  res = 367 * ((int64_t)mon) / 12;
-  res += year / 4 - year / 100 + year / 400 + day + ((int64_t)year) * 365 - 719499;
-  res = res * 24;
-  res = ((res + hour) * 60 + min) * 60 + sec;
-
-  return (res + time_zone);
-}
 
 // ==== mktime() kernel code =================//
 static int64_t m_deltaUtc = 0;
@@ -93,13 +53,13 @@ int32_t taosParseTime(const char* timestr, int64_t* utime, int32_t len, int32_t 
     if (checkTzPresent(timestr, len)) {
       return parseTimeWithTz(timestr, utime, timePrec, 'T');
     } else {
-      return (*parseLocaltimeFp[day_light])((char*)timestr, len, utime, timePrec, 'T');
+      return parseLocaltimeDst((char*)timestr, len, utime, timePrec, 'T');
     }
   } else {
     if (checkTzPresent(timestr, len)) {
       return parseTimeWithTz(timestr, utime, timePrec, 0);
     } else {
-      return (*parseLocaltimeFp[day_light])((char*)timestr, len, utime, timePrec, 0);
+      return parseLocaltimeDst((char*)timestr, len, utime, timePrec, 0);
     }
   }
 }
@@ -233,6 +193,14 @@ int32_t parseTimezone(char* str, int64_t* tzOffset) {
   }
 
   return 0;
+}
+
+int32_t offsetOfTimezone(char* tzStr, int64_t* offset) {
+  if (tzStr && (tzStr[0] == 'z' || tzStr[0] == 'Z')) {
+    *offset = 0;
+    return 0;
+  }
+  return parseTimezone(tzStr, offset);
 }
 
 /*
@@ -679,7 +647,7 @@ int32_t parseAbsoluteDuration(const char* token, int32_t tokenlen, int64_t* dura
 
   /* get the basic numeric value */
   int64_t timestamp = taosStr2Int64(token, &endPtr, 10);
-  if (timestamp < 0 || errno != 0) {
+  if ((timestamp == 0 && token[0] != '0') || errno != 0) {
     return -1;
   }
 
@@ -709,6 +677,10 @@ int32_t parseNatualDuration(const char* token, int32_t tokenLen, int64_t* durati
   return getDuration(*duration, *unit, duration, timePrecision);
 }
 
+static bool taosIsLeapYear(int32_t year) {
+  return (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0));
+}
+
 int64_t taosTimeAdd(int64_t t, int64_t duration, char unit, int32_t precision) {
   if (duration == 0) {
     return t;
@@ -728,41 +700,82 @@ int64_t taosTimeAdd(int64_t t, int64_t duration, char unit, int32_t precision) {
   int32_t mon = tm.tm_year * 12 + tm.tm_mon + (int32_t)numOfMonth;
   tm.tm_year = mon / 12;
   tm.tm_mon = mon % 12;
-
+  int daysOfMonth[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  if (taosIsLeapYear(1900 + tm.tm_year)) {
+    daysOfMonth[1] = 29;
+  }
+  if (tm.tm_mday > daysOfMonth[tm.tm_mon]) {
+    tm.tm_mday = daysOfMonth[tm.tm_mon];
+  }
   return (int64_t)(taosMktime(&tm) * TSDB_TICK_PER_SECOND(precision) + fraction);
 }
 
-int32_t taosTimeCountInterval(int64_t skey, int64_t ekey, int64_t interval, char unit, int32_t precision) {
+/**
+ * @brief calc how many windows after filling between skey and ekey
+ * @notes for asc order
+ *     skey      --->       ekey
+ *      ^                    ^
+ * _____!_____.........._____|_____..
+ *      |__1__)
+ *            |__2__)...-->|_ret+1_)
+ *      skey + ret * interval <= ekey
+ *      skey + ret * interval + interval > ekey
+ * ======> (ekey - skey - interval) / interval < ret <= (ekey - skey) / interval
+ * For keys from blocks which do not need filling, skey + ret * interval == ekey.
+ * For keys need filling, skey + ret * interval <= ekey.
+ * Total num of windows is ret + 1(the last window)
+ *
+ *        for desc order
+ *     skey       <---      ekey
+ *      ^                    ^
+ * _____|____..........______!____...
+ *                           |_first_)
+ *                     |__1__)
+ *  |_ret_)<--...|__2__)
+ *      skey >= ekey - ret * interval
+ *      skey < ekey - ret * interval + interval
+ *=======> (ekey - skey) / interval <= ret < (ekey - skey + interval) / interval
+ * For keys from blocks which do not need filling, skey == ekey - ret * interval.
+ * For keys need filling, skey >= ekey - ret * interval.
+ * Total num of windows is ret + 1(the first window)
+ */
+int32_t taosTimeCountIntervalForFill(int64_t skey, int64_t ekey, int64_t interval, char unit, int32_t precision,
+                              int32_t order) {
   if (ekey < skey) {
     int64_t tmp = ekey;
     ekey = skey;
     skey = tmp;
   }
+  int32_t ret;
+
   if (unit != 'n' && unit != 'y') {
-    return (int32_t)((ekey - skey) / interval);
+    ret = (int32_t)((ekey - skey) / interval);
+    if (order == TSDB_ORDER_DESC && ret * interval < (ekey - skey)) ret += 1;
+  } else {
+    skey /= (int64_t)(TSDB_TICK_PER_SECOND(precision));
+    ekey /= (int64_t)(TSDB_TICK_PER_SECOND(precision));
+
+    struct tm tm;
+    time_t    t = (time_t)skey;
+    taosLocalTime(&t, &tm, NULL);
+    int32_t smon = tm.tm_year * 12 + tm.tm_mon;
+
+    t = (time_t)ekey;
+    taosLocalTime(&t, &tm, NULL);
+    int32_t emon = tm.tm_year * 12 + tm.tm_mon;
+
+    if (unit == 'y') {
+      interval *= 12;
+    }
+    ret = (emon - smon) / (int32_t)interval;
+    if (order == TSDB_ORDER_DESC && ret * interval < (smon - emon)) ret += 1;
   }
-
-  skey /= (int64_t)(TSDB_TICK_PER_SECOND(precision));
-  ekey /= (int64_t)(TSDB_TICK_PER_SECOND(precision));
-
-  struct tm tm;
-  time_t    t = (time_t)skey;
-  taosLocalTime(&t, &tm, NULL);
-  int32_t smon = tm.tm_year * 12 + tm.tm_mon;
-
-  t = (time_t)ekey;
-  taosLocalTime(&t, &tm, NULL);
-  int32_t emon = tm.tm_year * 12 + tm.tm_mon;
-
-  if (unit == 'y') {
-    interval *= 12;
-  }
-
-  return (emon - smon) / (int32_t)interval;
+  return ret + 1;
 }
 
 int64_t taosTimeTruncate(int64_t ts, const SInterval* pInterval) {
-  if (pInterval->sliding == 0 && pInterval->interval == 0) {
+  if (pInterval->sliding == 0) {
+    ASSERT(pInterval->interval == 0);
     return ts;
   }
 
@@ -864,23 +877,33 @@ int64_t taosTimeTruncate(int64_t ts, const SInterval* pInterval) {
   ASSERT(pInterval->offset >= 0);
 
   if (pInterval->offset > 0) {
-    start = taosTimeAdd(start, pInterval->offset, pInterval->offsetUnit, precision);
-
     // try to move current window to the left-hande-side, due to the offset effect.
-    int64_t end = taosTimeAdd(start, pInterval->interval, pInterval->intervalUnit, precision) - 1;
-
-    int64_t newe = end;
+    int64_t newe = taosTimeAdd(start, pInterval->interval, pInterval->intervalUnit, precision) - 1;
+    int64_t slidingStart = start;
     while (newe >= ts) {
-      end = newe;
-      newe = taosTimeAdd(newe, -pInterval->sliding, pInterval->slidingUnit, precision);
+      start = slidingStart;
+      slidingStart = taosTimeAdd(slidingStart, -pInterval->sliding, pInterval->slidingUnit, precision);
+      int64_t slidingEnd = taosTimeAdd(slidingStart, pInterval->interval, pInterval->intervalUnit, precision) - 1;
+      newe = taosTimeAdd(slidingEnd, pInterval->offset, pInterval->offsetUnit, precision);
     }
-
-    start = taosTimeAdd(end, -pInterval->interval, pInterval->intervalUnit, precision) + 1;
+    start = taosTimeAdd(start, pInterval->offset, pInterval->offsetUnit, precision);
   }
 
   return start;
 }
 
+// used together with taosTimeTruncate. when offset is great than zero, slide-start/slide-end is the anchor point
+int64_t taosTimeGetIntervalEnd(int64_t intervalStart, const SInterval* pInterval) {
+  if (pInterval->offset > 0) {
+    int64_t slideStart = taosTimeAdd(intervalStart, -1 * pInterval->offset, pInterval->offsetUnit, pInterval->precision);
+    int64_t slideEnd = taosTimeAdd(slideStart, pInterval->interval, pInterval->intervalUnit, pInterval->precision) - 1;
+    int64_t result = taosTimeAdd(slideEnd, pInterval->offset, pInterval->offsetUnit, pInterval->precision);
+    return result;
+  } else {
+    int64_t result = taosTimeAdd(intervalStart, pInterval->interval, pInterval->intervalUnit, pInterval->precision) - 1;
+    return result;
+  }
+}
 // internal function, when program is paused in debugger,
 // one can call this function from debugger to print a
 // timestamp as human readable string, for example (gdb):
@@ -968,7 +991,7 @@ void taosFormatUtcTime(char* buf, int32_t bufLen, int64_t t, int32_t precision) 
 
     default:
       fractionLen = 0;
-      ASSERT(false);
+      return;
   }
 
   if (taosLocalTime(&quot, &ptm, buf) == NULL) {

@@ -123,6 +123,8 @@ LONG WINAPI exceptionHandler(LPEXCEPTION_POINTERS exception);
 static pid_t tsProcId;
 static char  tsSysNetFile[] = "/proc/net/dev";
 static char  tsSysCpuFile[] = "/proc/stat";
+static char  tsCpuPeriodFile[] = "/sys/fs/cgroup/cpu/cpu.cfs_period_us";
+static char  tsCpuQuotaFile[] = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us";
 static char  tsProcCpuFile[25] = {0};
 static char  tsProcMemFile[25] = {0};
 static char  tsProcIOFile[25] = {0};
@@ -242,7 +244,7 @@ bool taosCheckSystemIsLittleEnd() {
 
 void taosGetSystemInfo() {
 #ifdef WINDOWS
-  taosGetCpuCores(&tsNumOfCores);
+  taosGetCpuCores(&tsNumOfCores, false);
   taosGetTotalMemory(&tsTotalMemoryKB);
   taosGetCpuUsage(NULL, NULL);
 #elif defined(_TD_DARWIN_64)
@@ -253,7 +255,7 @@ void taosGetSystemInfo() {
   tsNumOfCores = sysconf(_SC_NPROCESSORS_ONLN);
 #else
   taosGetProcIOnfos();
-  taosGetCpuCores(&tsNumOfCores);
+  taosGetCpuCores(&tsNumOfCores, false);
   taosGetTotalMemory(&tsTotalMemoryKB);
   taosGetCpuUsage(NULL, NULL);
   taosGetCpuInstructions(&tsSSE42Enable, &tsAVXEnable, &tsAVX2Enable, &tsFMAEnable);
@@ -335,17 +337,19 @@ bool getWinVersionReleaseName(char *releaseName, int32_t maxLen) {
 }
 #endif
 
-int32_t taosGetOsReleaseName(char *releaseName, int32_t maxLen) {
+int32_t taosGetOsReleaseName(char *releaseName, char* sName, char* ver, int32_t maxLen) {
 #ifdef WINDOWS
   if (!getWinVersionReleaseName(releaseName, maxLen)) {
     snprintf(releaseName, maxLen, "Windows");
   }
+  if(sName) snprintf(sName, maxLen, "Windows");
   return 0;
 #elif defined(_TD_DARWIN_64)
   char osversion[32];
   size_t osversion_len = sizeof(osversion) - 1;
   int osversion_name[] = { CTL_KERN, KERN_OSRELEASE };
 
+  if(sName) snprintf(sName, maxLen, "macOS");
   if (sysctl(osversion_name, 2, osversion, &osversion_len, NULL, 0) == -1) {
     return -1;
   }
@@ -365,24 +369,35 @@ int32_t taosGetOsReleaseName(char *releaseName, int32_t maxLen) {
   return 0;
 #else
   char    line[1024];
+  char   *dest = NULL;
   size_t  size = 0;
   int32_t code = -1;
+  int32_t cnt = 0;
 
   TdFilePtr pFile = taosOpenFile("/etc/os-release", TD_FILE_READ | TD_FILE_STREAM);
-  if (pFile == NULL) return false;
+  if (pFile == NULL) return code;
 
   while ((size = taosGetsFile(pFile, sizeof(line), line)) != -1) {
     line[size - 1] = '\0';
-    if (strncmp(line, "PRETTY_NAME", 11) == 0) {
-      const char *p = strchr(line, '=') + 1;
-      if (*p == '"') {
-        p++;
-        line[size - 2] = 0;
-      }
-      tstrncpy(releaseName, p, maxLen);
+    if (strncmp(line, "NAME", 4) == 0) {
+      dest = sName;
+    } else if (strncmp(line, "PRETTY_NAME", 11) == 0) {
+      dest = releaseName;
       code = 0;
-      break;
+    } else if (strncmp(line, "VERSION_ID", 10) == 0) {
+      dest = ver;
+    } else {
+      continue;
     }
+    if (!dest) continue;
+    const char *p = strchr(line, '=') + 1;
+    if (*p == '"') {
+      p++;
+      line[size - 2] = 0;
+    }
+    tstrncpy(dest, p, maxLen);
+
+    if (++cnt >= 3) break;
   }
 
   taosCloseFile(&pFile);
@@ -488,7 +503,55 @@ int32_t taosGetCpuInfo(char *cpuModel, int32_t maxLen, float *numOfCores) {
 #endif
 }
 
-int32_t taosGetCpuCores(float *numOfCores) {
+// Returns the container's CPU quota if successful, otherwise returns the physical CPU cores
+static int32_t taosCntrGetCpuCores(float *numOfCores) {
+#ifdef WINDOWS
+  return -1;
+#elif defined(_TD_DARWIN_64)
+  return -1;
+#else
+  TdFilePtr pFile = NULL;
+  if (!(pFile = taosOpenFile(tsCpuQuotaFile, TD_FILE_READ | TD_FILE_STREAM))) {
+    goto _sys;
+  }
+  char qline[32] = {0};
+  if (taosGetsFile(pFile, sizeof(qline), qline) < 0) {
+    taosCloseFile(&pFile);
+    goto _sys;
+  }
+  taosCloseFile(&pFile);
+  float quota = taosStr2Float(qline, NULL);
+  if (quota < 0) {
+    goto _sys;
+  }
+
+  if (!(pFile = taosOpenFile(tsCpuPeriodFile, TD_FILE_READ | TD_FILE_STREAM))) {
+    goto _sys;
+  }
+  char pline[32] = {0};
+  if (taosGetsFile(pFile, sizeof(pline), pline) < 0) {
+    taosCloseFile(&pFile);
+    goto _sys;
+  }
+  taosCloseFile(&pFile);
+
+  float period = taosStr2Float(pline, NULL);
+  float quotaCores = quota / period;
+  float sysCores = sysconf(_SC_NPROCESSORS_ONLN);
+  if (quotaCores < sysCores && quotaCores > 0) {
+    *numOfCores = quotaCores;
+  } else {
+    *numOfCores = sysCores;
+  }
+  goto _end;
+_sys:
+  *numOfCores = sysconf(_SC_NPROCESSORS_ONLN);
+_end:
+  return 0;
+#endif
+}
+
+int32_t taosGetCpuCores(float *numOfCores, bool physical) {
 #ifdef WINDOWS
   SYSTEM_INFO info;
   GetSystemInfo(&info);
@@ -498,7 +561,11 @@ int32_t taosGetCpuCores(float *numOfCores) {
   *numOfCores = sysconf(_SC_NPROCESSORS_ONLN);
   return 0;
 #else
-  *numOfCores = sysconf(_SC_NPROCESSORS_ONLN);
+  if (physical) {
+    *numOfCores = sysconf(_SC_NPROCESSORS_ONLN);
+  } else {
+    taosCntrGetCpuCores(numOfCores);
+  }
   return 0;
 #endif
 }
@@ -793,13 +860,12 @@ void taosGetProcIODelta(int64_t *rchars, int64_t *wchars, int64_t *read_bytes, i
 }
 
 int32_t taosGetCardInfo(int64_t *receive_bytes, int64_t *transmit_bytes) {
-#ifdef WINDOWS
   *receive_bytes = 0;
   *transmit_bytes = 0;
+
+#ifdef WINDOWS
   return 0;
 #elif defined(_TD_DARWIN_64)
-  *receive_bytes = 0;
-  *transmit_bytes = 0;
   return 0;
 #else
   TdFilePtr pFile = taosOpenFile(tsSysNetFile, TD_FILE_READ | TD_FILE_STREAM);
@@ -836,8 +902,8 @@ int32_t taosGetCardInfo(int64_t *receive_bytes, int64_t *transmit_bytes) {
            "%s %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64
            " %" PRId64,
            nouse0, &o_rbytes, &rpackts, &nouse1, &nouse2, &nouse3, &nouse4, &nouse5, &nouse6, &o_tbytes, &tpackets);
-    *receive_bytes = o_rbytes;
-    *transmit_bytes = o_tbytes;
+    *receive_bytes += o_rbytes;
+    *transmit_bytes += o_tbytes;
   }
 
   taosCloseFile(&pFile);
@@ -849,8 +915,8 @@ int32_t taosGetCardInfo(int64_t *receive_bytes, int64_t *transmit_bytes) {
 void taosGetCardInfoDelta(int64_t *receive_bytes, int64_t *transmit_bytes) {
   static int64_t last_receive_bytes = 0;
   static int64_t last_transmit_bytes = 0;
-  static int64_t cur_receive_bytes = 0;
-  static int64_t cur_transmit_bytes = 0;
+  int64_t cur_receive_bytes = 0;
+  int64_t cur_transmit_bytes = 0;
   if (taosGetCardInfo(&cur_receive_bytes, &cur_transmit_bytes) == 0) {
     *receive_bytes = cur_receive_bytes - last_receive_bytes;
     *transmit_bytes = cur_transmit_bytes - last_transmit_bytes;
@@ -956,8 +1022,19 @@ char *taosGetCmdlineByPID(int pid) {
 #endif
 }
 
-#ifdef _TD_SYLIXOS_
+int64_t taosGetOsUptime() {
+#ifdef WINDOWS
+#elif defined(_TD_DARWIN_64)
+#else
+  struct sysinfo info;
+  if (0 == sysinfo(&info)) {
+    return (int64_t)info.uptime * 1000;
+  }
+#endif
+  return 0;
+}
 
+#ifdef _TD_SYLIXOS_
 void taosSetCoreDump(bool enable) {}
 #else
 

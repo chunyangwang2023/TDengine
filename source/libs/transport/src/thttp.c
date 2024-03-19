@@ -32,6 +32,7 @@ typedef struct SHttpModule {
   uv_loop_t*  loop;
   SAsyncPool* asyncPool;
   TdThread    thread;
+  int8_t      quit;
 } SHttpModule;
 
 typedef struct SHttpMsg {
@@ -186,6 +187,29 @@ static void httpDestroyMsg(SHttpMsg* msg) {
   taosMemoryFree(msg->cont);
   taosMemoryFree(msg);
 }
+static void httpDestroyMsgWrapper(void* cont, void* param) { httpDestroyMsg((SHttpMsg*)cont); }
+
+static void httpMayDiscardMsg(SHttpModule* http, SAsyncItem* item) {
+  SHttpMsg *msg = NULL, *quitMsg = NULL;
+  if (atomic_load_8(&http->quit) == 0) {
+    return;
+  }
+
+  while (!QUEUE_IS_EMPTY(&item->qmsg)) {
+    queue* h = QUEUE_HEAD(&item->qmsg);
+    QUEUE_REMOVE(h);
+    msg = QUEUE_DATA(h, SHttpMsg, q);
+    if (msg->quit) {
+      quitMsg = msg;
+    } else {
+      httpDestroyMsg(msg);
+    }
+  }
+  if (quitMsg != NULL) {
+    QUEUE_PUSH(&item->qmsg, &quitMsg->q);
+  }
+}
+
 static void httpAsyncCb(uv_async_t* handle) {
   SAsyncItem*  item = handle->data;
   SHttpModule* http = item->pThrd;
@@ -194,7 +218,10 @@ static void httpAsyncCb(uv_async_t* handle) {
 
   queue wq;
   taosThreadMutexLock(&item->mtx);
+  httpMayDiscardMsg(http, item);
+
   QUEUE_MOVE(&item->qmsg, &wq);
+
   taosThreadMutexUnlock(&item->mtx);
 
   int count = 0;
@@ -293,6 +320,16 @@ int32_t httpSendQuit() {
 
 static int32_t taosSendHttpReportImpl(const char* server, const char* uri, uint16_t port, char* pCont, int32_t contLen,
                                       EHttpCompFlag flag) {
+  if (server == NULL || uri == NULL) {
+    tError("http-report failed to report to invalid addr");
+    return -1;
+  }
+
+  if (pCont == NULL || contLen == 0) {
+    tError("http-report failed to report empty packet");
+    return -1;
+  }
+
   SHttpModule* load = taosAcquireRef(httpRefMgt, httpRef);
   if (load == NULL) {
     tError("http-report already released");
@@ -340,6 +377,7 @@ static void httpHandleQuit(SHttpMsg* msg) {
   uv_walk(http->loop, httpWalkCb, NULL);
   taosReleaseRef(httpRefMgt, httpRef);
 }
+
 static void httpHandleReq(SHttpMsg* msg) {
   SHttpModule* http = taosAcquireRef(httpRefMgt, httpRef);
   if (http == NULL) {
@@ -390,8 +428,14 @@ static void httpHandleReq(SHttpMsg* msg) {
   uv_tcp_init(http->loop, &cli->tcp);
 
   // set up timeout to avoid stuck;
-  int32_t fd = taosCreateSocketWithTimeout(5);
-  int     ret = uv_tcp_open((uv_tcp_t*)&cli->tcp, fd);
+  int32_t fd = taosCreateSocketWithTimeout(5 * 1000);
+  if (fd < 0) {
+    tError("http-report failed to open socket, dst:%s:%d", cli->addr, cli->port);
+    taosReleaseRef(httpRefMgt, httpRef);
+    destroyHttpClient(cli);
+    return;
+  }
+  int ret = uv_tcp_open((uv_tcp_t*)&cli->tcp, fd);
   if (ret != 0) {
     tError("http-report failed to open socket, reason:%s, dst:%s:%d", uv_strerror(ret), cli->addr, cli->port);
     taosReleaseRef(httpRefMgt, httpRef);
@@ -426,6 +470,7 @@ static void transHttpEnvInit() {
 
   SHttpModule* http = taosMemoryMalloc(sizeof(SHttpModule));
   http->loop = taosMemoryMalloc(sizeof(uv_loop_t));
+  http->quit = 0;
   uv_loop_init(http->loop);
 
   http->asyncPool = transAsyncPoolCreate(http->loop, 1, http, httpAsyncCb);
@@ -451,10 +496,13 @@ void transHttpEnvDestroy() {
     return;
   }
   SHttpModule* load = taosAcquireRef(httpRefMgt, httpRef);
+  if (load == NULL) return;
+
+  atomic_store_8(&load->quit, 1);
   httpSendQuit();
   taosThreadJoin(load->thread, NULL);
 
-  TRANS_DESTROY_ASYNC_POOL_MSG(load->asyncPool, SHttpMsg, httpDestroyMsg);
+  TRANS_DESTROY_ASYNC_POOL_MSG(load->asyncPool, SHttpMsg, httpDestroyMsgWrapper, NULL);
   transAsyncPoolDestroy(load->asyncPool);
   uv_loop_close(load->loop);
   taosMemoryFree(load->loop);

@@ -19,6 +19,9 @@
 #include "tconfig.h"
 #include "tglobal.h"
 #include "version.h"
+#ifdef TD_JEMALLOC_ENABLED
+#include "jemalloc/jemalloc.h"
+#endif
 
 #if defined(CUS_NAME) || defined(CUS_PROMPT) || defined(CUS_EMAIL)
 #include "cus_name.h"
@@ -166,11 +169,29 @@ static int32_t dmParseArgs(int32_t argc, char const *argv[]) {
         return -1;
       }
     } else if (strcmp(argv[i], "-a") == 0) {
-      tstrncpy(global.apolloUrl, argv[++i], PATH_MAX);
+      if(i < argc - 1) {
+        if (strlen(argv[++i]) >= PATH_MAX) {
+          printf("apollo url overflow");
+          return -1;
+        }
+        tstrncpy(global.apolloUrl, argv[i], PATH_MAX);
+      } else {
+        printf("'-a' requires a parameter\n");
+        return -1;
+      }
     } else if (strcmp(argv[i], "-s") == 0) {
       global.dumpSdb = true;
     } else if (strcmp(argv[i], "-E") == 0) {
-      tstrncpy(global.envFile, argv[++i], PATH_MAX);
+      if(i < argc - 1) {
+        if (strlen(argv[++i]) >= PATH_MAX) {
+          printf("env file path overflow");
+          return -1;
+        }
+        tstrncpy(global.envFile, argv[i], PATH_MAX);
+      } else {
+        printf("'-E' requires a parameter\n");
+        return -1;
+      }
     } else if (strcmp(argv[i], "-k") == 0) {
       global.generateGrant = true;
     } else if (strcmp(argv[i], "-C") == 0) {
@@ -255,6 +276,10 @@ static void taosCleanupArgs() {
 }
 
 int main(int argc, char const *argv[]) {
+#ifdef TD_JEMALLOC_ENABLED
+  bool jeBackgroundThread = true;
+  mallctl("background_thread", NULL, NULL, &jeBackgroundThread, sizeof(bool));
+#endif
   if (!taosCheckSystemIsLittleEnd()) {
     printf("failed to start since on non-little-end machines\n");
     return -1;
@@ -352,7 +377,11 @@ int mainWindows(int argc, char **argv) {
   taosCleanupArgs();
 
   if (dmInit() != 0) {
-    dError("failed to init dnode since %s", terrstr());
+    if (terrno == TSDB_CODE_NOT_FOUND) {
+      dError("failed to init dnode since unsupported platform, please visit https://www.taosdata.com for support");
+    } else {
+      dError("failed to init dnode since %s", terrstr());
+    }
 
     taosCleanupCfg();
     taosCloseLog();
@@ -362,6 +391,8 @@ int mainWindows(int argc, char **argv) {
 
   dInfo("start to init service");
   dmSetSignalHandle();
+  tsDndStart = taosGetTimestampMs();
+  tsDndStartOsUptime = taosGetOsUptime();
   int32_t code = dmRun();
   dInfo("shutting down the service");
 

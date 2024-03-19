@@ -58,7 +58,7 @@ int32_t qBuildStmtOutput(SQuery* pQuery, SHashObj* pVgHash, SHashObj* pBlockHash
 
   // merge according to vgId
   if (taosHashGetSize(pBlockHash) > 0) {
-    code = insMergeTableDataCxt(pBlockHash, &pVgDataBlocks);
+    code = insMergeTableDataCxt(pBlockHash, &pVgDataBlocks, true);
   }
   if (TSDB_CODE_SUCCESS == code) {
     code = insBuildVgDataBlocks(pVgHash, pVgDataBlocks, &pStmt->pDataBlocks);
@@ -128,7 +128,8 @@ int32_t qBindStmtTagsValue(void* pBlock, void* boundTags, int64_t suid, const ch
     } else {
       STagVal val = {.cid = pTagSchema->colId, .type = pTagSchema->type};
       //      strcpy(val.colName, pTagSchema->name);
-      if (pTagSchema->type == TSDB_DATA_TYPE_BINARY) {
+      if (pTagSchema->type == TSDB_DATA_TYPE_BINARY || pTagSchema->type == TSDB_DATA_TYPE_VARBINARY ||
+          pTagSchema->type == TSDB_DATA_TYPE_GEOMETRY) {
         val.pData = (uint8_t*)bind[c].buffer;
         val.nData = colLen;
       } else if (pTagSchema->type == TSDB_DATA_TYPE_NCHAR) {
@@ -266,7 +267,10 @@ int32_t qBindStmtColsValue(void* pBlock, TAOS_MULTI_BIND* bind, char* msgBuf, in
       pBind = bind + c;
     }
 
-    tColDataAddValueByBind(pCol, pBind);
+    code = tColDataAddValueByBind(pCol, pBind, IS_VAR_DATA_TYPE(pColSchema->type) ? pColSchema->bytes - VARSTR_HEADER_SIZE: -1);
+    if (code) {
+      goto _return;
+    }
   }
 
   qDebug("stmt all %d columns bind %d rows data", boundInfo->numOfBound, rowNum);
@@ -309,7 +313,7 @@ int32_t qBindStmtSingleColValue(void* pBlock, TAOS_MULTI_BIND* bind, char* msgBu
     pBind = bind;
   }
 
-  tColDataAddValueByBind(pCol, pBind);
+  tColDataAddValueByBind(pCol, pBind, IS_VAR_DATA_TYPE(pColSchema->type) ? pColSchema->bytes - VARSTR_HEADER_SIZE: -1);
 
   qDebug("stmt col %d bind %d rows data", colIdx, rowNum);
 
@@ -405,7 +409,7 @@ int32_t qResetStmtDataBlock(STableDataCxt* block, bool deepClear) {
   return TSDB_CODE_SUCCESS;
 }
 
-int32_t qCloneStmtDataBlock(STableDataCxt** pDst, STableDataCxt* pSrc, bool reset) {
+int32_t qCloneStmtDataBlock(STableDataCxt** pDst, STableDataCxt* pSrc, bool reset, bool copyMeta) {
   int32_t code = 0;
 
   *pDst = taosMemoryCalloc(1, sizeof(STableDataCxt));
@@ -419,13 +423,18 @@ int32_t qCloneStmtDataBlock(STableDataCxt** pDst, STableDataCxt* pSrc, bool rese
   pNewCxt->pValues = NULL;
 
   if (pCxt->pMeta) {
-    void* pNewMeta = taosMemoryMalloc(TABLE_META_SIZE(pCxt->pMeta));
-    if (NULL == pNewMeta) {
-      insDestroyTableDataCxt(*pDst);
-      return TSDB_CODE_OUT_OF_MEMORY;
+    if (copyMeta) {
+      void* pNewMeta = taosMemoryMalloc(TABLE_META_SIZE(pCxt->pMeta));
+      if (NULL == pNewMeta) {
+        insDestroyTableDataCxt(*pDst);
+        return TSDB_CODE_OUT_OF_MEMORY;
+      }
+      memcpy(pNewMeta, pCxt->pMeta, TABLE_META_SIZE(pCxt->pMeta));
+      pNewCxt->pMeta = pNewMeta;
+    } else {
+      pNewCxt->pMeta = pCxt->pMeta;
+      pNewCxt->metaPointer = true;
     }
-    memcpy(pNewMeta, pCxt->pMeta, TABLE_META_SIZE(pCxt->pMeta));
-    pNewCxt->pMeta = pNewMeta;
   }
 
   memcpy(&pNewCxt->boundColsInfo, &pCxt->boundColsInfo, sizeof(pCxt->boundColsInfo));
@@ -470,7 +479,7 @@ int32_t qCloneStmtDataBlock(STableDataCxt** pDst, STableDataCxt* pSrc, bool rese
 
 int32_t qRebuildStmtDataBlock(STableDataCxt** pDst, STableDataCxt* pSrc, uint64_t uid, uint64_t suid, int32_t vgId,
                               bool rebuildCreateTb) {
-  int32_t code = qCloneStmtDataBlock(pDst, pSrc, false);
+  int32_t code = qCloneStmtDataBlock(pDst, pSrc, false, true);
   if (code) {
     return code;
   }

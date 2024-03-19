@@ -6,14 +6,14 @@ description: Use Tag Index to Improve Query Performance
 
 ## Introduction
 
-Prior to TDengine 3.0.3.0 (excluded)，only one index is created by default on the first tag of each super talbe, but it's not allowed to dynamically create index on any other tags. From version 3.0.30, you can dynamically create index on any tag of any type. The index created automatically by TDengine is still valid. Query performance can benefit from indexes if you use properly.
+Prior to TDengine 3.0.3.0 (excluded), only one index is created by default on the first tag of each super table, but it's not allowed to dynamically create index on any other tags. From version 3.0.30, you can dynamically create index on any tag of any type. The index created automatically by TDengine is still valid. Query performance can benefit from indexes if you use properly.
 
 ## Syntax
 
 1. The syntax of creating an index 
 
 ```sql
-CREATE INDEX index_name ON tbl_name (tagColName）
+CREATE INDEX index_name ON tbl_name (tagColName)
 ```
 
 In the above statement, `index_name` if the name of the index, `tbl_name` is the name of the super table,`tagColName` is the name of the tag on which the index is being created. `tagColName` can be any type supported by TDengine.
@@ -49,3 +49,5 @@ You can also add filter conditions to limit the results.
 6. You can' create index on a normal table or a child table. 
 
 7. If the unique values of a tag column are too few, it's better not to create index on such tag columns, the benefit would be very small. 
+
+8. The newly created super table will randomly generate an index name for the first column of tags, which is composed of the name tag0 column with 23 random bytes, and can be rebuilt or dropped.  

@@ -17,6 +17,9 @@
 #include <taosws.h>
 #include <shellInt.h>
 
+// save current database name
+char curDBName[128] = ""; // TDB_MAX_DBNAME_LEN is 24, put large
+
 int shell_conn_ws_server(bool first) {
   char cuttedDsn[SHELL_WS_DSN_BUFF] = {0};
   int dsnLen = strlen(shell.args.dsn);
@@ -56,9 +59,27 @@ int shell_conn_ws_server(bool first) {
     fprintf(stdout, "successfully connected to %s\n\n",
         shell.args.dsn);
   } else if (first && shell.args.cloud) {
-    fprintf(stdout, "successfully connected to cloud service\n");
+    if(shell.args.local) {
+      const char* host = strstr(shell.args.dsn, "@");
+      if(host) {
+        host += 1;
+      } else {
+        host = shell.args.dsn;
+      }
+      fprintf(stdout, "successfully connected to %s\n", host);
+    } else {
+      fprintf(stdout, "successfully connected to cloud service\n");
+    }
   }
   fflush(stdout);
+
+  // switch to current database if have
+  if(curDBName[0] !=0) {
+    char command[256];
+    sprintf(command, "use %s;", curDBName);
+    shellRunSingleCommandWebsocketImp(command);
+  }
+
   return 0;
 }
 
@@ -225,22 +246,17 @@ void shellRunSingleCommandWebsocketImp(char *command) {
   bool    printMode = false;
 
   if ((sptr = strstr(command, ">>")) != NULL) {
-    cptr = strstr(command, ";");
-    if (cptr != NULL) {
-      *cptr = '\0';
-    }
-
     fname = sptr + 2;
     while (*fname == ' ') fname++;
     *sptr = '\0';
-  }
 
-  if ((sptr = strstr(command, "\\G")) != NULL) {
-    cptr = strstr(command, ";");
+    cptr = strstr(fname, ";");
     if (cptr != NULL) {
       *cptr = '\0';
     }
+  }
 
+  if ((sptr = strstr(command, "\\G")) != NULL) {
     *sptr = '\0';
     printMode = true;  // When output to a file, the switch does not work.
   }
@@ -267,7 +283,7 @@ void shellRunSingleCommandWebsocketImp(char *command) {
       }
       if (code == TSDB_CODE_WS_SEND_TIMEOUT
                 || code == TSDB_CODE_WS_RECV_TIMEOUT) {
-        fprintf(stderr, "Hint: use -t to increase the timeout in seconds\n");
+        fprintf(stderr, "Hint: use -T to increase the timeout in seconds\n");
       } else if (code == TSDB_CODE_WS_INTERNAL_ERRO
                     || code == TSDB_CODE_WS_CLOSED) {
         shell.ws_conn = NULL;
@@ -290,7 +306,46 @@ void shellRunSingleCommandWebsocketImp(char *command) {
 
   if (shellRegexMatch(command, "^\\s*use\\s+[a-zA-Z0-9_]+\\s*;\\s*$",
                       REG_EXTENDED | REG_ICASE)) {
-    fprintf(stdout, "Database changed.\r\n\r\n");
+
+    // copy dbname to curDBName
+    char *p         = command;
+    bool firstStart = false;
+    bool firstEnd   = false;
+    int  i          = 0;
+    while (*p != 0) {
+      if (*p != ' ') {
+        // not blank
+        if (!firstStart) {
+          firstStart = true;
+        } else if (firstEnd) {
+          if(*p == ';' && *p != '\\') {
+            break;
+          }
+          // database name
+          curDBName[i++] = *p;
+          if(i + 4 > sizeof(curDBName)) {
+            // DBName is too long, reset zero and break
+            i = 0;
+            break;
+          }
+        }
+      } else {
+        // blank
+        if(firstStart == true && firstEnd == false){
+          firstEnd = true;
+        }
+        if(firstStart && firstEnd && i > 0){
+          // blank after database name
+          break;
+        }
+      }
+      // move next
+      p++;
+    }
+    // append end
+    curDBName[i] = 0;
+
+    fprintf(stdout, "Database changed to %s.\r\n\r\n", curDBName);
     fflush(stdout);
     ws_free_result(res);
     return;
@@ -323,8 +378,6 @@ void shellRunSingleCommandWebsocketImp(char *command) {
     } else {
       printf("Query interrupted, %d row(s) in set (%.6fs)\n", numOfRows,
           (et - st)/1E6);
-      printf("Execute: %.2f ms Network: %.2f ms Total: %.2f ms\n",
-             execute_time, net_time, total_time);
     }
   }
   printf("\n");

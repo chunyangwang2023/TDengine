@@ -45,14 +45,14 @@ class TDTestCase:
         expectRowsList = []
         tmqCom.initConsumerTable()
         tdCom.create_database(tdSql, paraDict["dbName"],paraDict["dropFlag"], vgroups=4,replica=1)
-        tdSql.execute("alter database %s wal_retention_period 3600" % (paraDict['dbName']))
         tdLog.info("create stb")
         tdCom.create_stable(tdSql, dbname=paraDict["dbName"],stbname=paraDict["stbName"], column_elm_list=paraDict['colSchema'], tag_elm_list=paraDict['tagSchema'])
         tdLog.info("create ctb")
         tdCom.create_ctable(tdSql, dbname=paraDict["dbName"],stbname=paraDict["stbName"],tag_elm_list=paraDict['tagSchema'],count=paraDict["ctbNum"], default_ctbname_prefix=paraDict['ctbPrefix'])
         tdLog.info("insert data")
         tmqCom.insert_data(tdSql,paraDict["dbName"],paraDict["ctbPrefix"],paraDict["ctbNum"],paraDict["rowsPerTbl"],paraDict["batchNum"],paraDict["startTs"])
-
+        tdSql.execute("insert into ctb0  values(now,1,'');")
+        
         tdLog.info("create topics from stb with filter")
         queryString = "select ts,c1,c2 from %s.%s" %(paraDict['dbName'], paraDict['stbName'])
         sqlString = "create topic %s as stable %s.%s" %(topicNameList[0], paraDict["dbName"],paraDict["stbName"])

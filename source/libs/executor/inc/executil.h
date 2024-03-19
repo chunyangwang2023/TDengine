@@ -12,17 +12,17 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef TDENGINE_QUERYUTIL_H
-#define TDENGINE_QUERYUTIL_H
+#ifndef TDENGINE_EXECUTIL_H
+#define TDENGINE_EXECUTIL_H
 
+#include "executor.h"
 #include "function.h"
 #include "nodes.h"
 #include "plannodes.h"
+#include "storageapi.h"
 #include "tcommon.h"
 #include "tpagedbuf.h"
 #include "tsimplehash.h"
-#include "vnode.h"
-#include "executor.h"
 
 #define T_LONG_JMP(_obj, _c) \
   do {                       \
@@ -37,11 +37,13 @@
     memcpy((_k) + sizeof(uint64_t), (_ori), (_len)); \
   } while (0)
 
-#define GET_RES_WINDOW_KEY_LEN(_l)     ((_l) + sizeof(uint64_t))
+#define GET_RES_WINDOW_KEY_LEN(_l) ((_l) + sizeof(uint64_t))
 
 typedef struct SGroupResInfo {
-  int32_t index;
-  SArray* pRows;  // SArray<SResKeyPos>
+  int32_t index;    // rows consumed in func:doCopyToSDataBlockXX
+  int32_t iter;     // relate to index-1, last consumed data's slot id in hash table
+  void*   dataPos;  // relate to index-1, last consumed data's position, in the nodelist of cur slot
+  SArray* pRows;    // SArray<SResKeyPos>
   char*   pBuf;
   bool    freeItem;
 } SGroupResInfo;
@@ -65,7 +67,7 @@ typedef struct SResultRowPosition {
 typedef struct SResKeyPos {
   SResultRowPosition pos;
   uint64_t           groupId;
-  char key[];
+  char               key[];
 } SResKeyPos;
 
 typedef struct SResultRowInfo {
@@ -75,10 +77,11 @@ typedef struct SResultRowInfo {
 } SResultRowInfo;
 
 typedef struct SColMatchItem {
-  int32_t colId;
-  int32_t srcSlotId;
-  int32_t dstSlotId;
-  bool    needOutput;
+  int32_t   colId;
+  int32_t   srcSlotId;
+  int32_t   dstSlotId;
+  bool      needOutput;
+  SDataType dataType;
 } SColMatchItem;
 
 typedef struct SColMatchInfo {
@@ -87,7 +90,6 @@ typedef struct SColMatchInfo {
 } SColMatchInfo;
 
 typedef struct SExecTaskInfo SExecTaskInfo;
-
 
 typedef struct STableListIdInfo {
   uint64_t suid;
@@ -109,14 +111,15 @@ typedef struct STableListInfo {
 struct SqlFunctionCtx;
 
 int32_t createScanTableListInfo(SScanPhysiNode* pScanNode, SNodeList* pGroupTags, bool groupSort, SReadHandle* pHandle,
-                                STableListInfo* pTableListInfo, SNode* pTagCond, SNode* pTagIndexCond, SExecTaskInfo* pTaskInfo);
+                                STableListInfo* pTableListInfo, SNode* pTagCond, SNode* pTagIndexCond,
+                                SExecTaskInfo* pTaskInfo);
 
 STableListInfo* tableListCreate();
 void*           tableListDestroy(STableListInfo* pTableListInfo);
 void            tableListClear(STableListInfo* pTableListInfo);
 int32_t         tableListGetOutputGroups(const STableListInfo* pTableList);
 bool            oneTableForEachGroup(const STableListInfo* pTableList);
-uint64_t        getTableGroupId(const STableListInfo* pTableList, uint64_t tableUid);
+uint64_t        tableListGetTableGroupId(const STableListInfo* pTableList, uint64_t tableUid);
 int32_t         tableListAddTableInfo(STableListInfo* pTableList, uint64_t uid, uint64_t gid);
 int32_t         tableListGetGroupList(const STableListInfo* pTableList, int32_t ordinalIndex, STableKeyInfo** pKeyInfo,
                                       int32_t* num);
@@ -135,6 +138,10 @@ struct SResultRowEntryInfo* getResultEntryInfo(const SResultRow* pRow, int32_t i
 
 static FORCE_INLINE SResultRow* getResultRowByPos(SDiskbasedBuf* pBuf, SResultRowPosition* pos, bool forUpdate) {
   SFilePage* bufPage = (SFilePage*)getBufPage(pBuf, pos->pageId);
+  if (!bufPage) {
+    uFatal("failed to get the buffer page:%d since %s", pos->pageId, terrstr());
+    return NULL;
+  }
   if (forUpdate) {
     setBufPageDirty(bufPage, true);
   }
@@ -154,11 +161,11 @@ int32_t getNumOfTotalRes(SGroupResInfo* pGroupResInfo);
 SSDataBlock* createDataBlockFromDescNode(SDataBlockDescNode* pNode);
 
 EDealRes doTranslateTagExpr(SNode** pNode, void* pContext);
-int32_t  getGroupIdFromTagsVal(void* pMeta, uint64_t uid, SNodeList* pGroupNode, char* keyBuf, uint64_t* pGroupId);
+int32_t  getGroupIdFromTagsVal(void* pVnode, uint64_t uid, SNodeList* pGroupNode, char* keyBuf, uint64_t* pGroupId, SStorageAPI* pAPI);
 size_t   getTableTagsBufLen(const SNodeList* pGroups);
 
 SArray* createSortInfo(SNodeList* pNodeList);
-SArray* extractPartitionColInfo(SNodeList* pNodeList);
+SArray* makeColumnArrayFromList(SNodeList* pNodeList);
 int32_t extractColMatchInfo(SNodeList* pNodeList, SDataBlockDescNode* pOutputNodeList, int32_t* numOfOutputCols,
                             int32_t type, SColMatchInfo* pMatchInfo);
 
@@ -166,7 +173,7 @@ void       createExprFromOneNode(SExprInfo* pExp, SNode* pNode, int16_t slotId);
 void       createExprFromTargetNode(SExprInfo* pExp, STargetNode* pTargetNode);
 SExprInfo* createExprInfo(SNodeList* pNodeList, SNodeList* pGroupKeys, int32_t* numOfExprs);
 
-SqlFunctionCtx* createSqlFunctionCtx(SExprInfo* pExprInfo, int32_t numOfOutput, int32_t** rowEntryInfoOffset);
+SqlFunctionCtx* createSqlFunctionCtx(SExprInfo* pExprInfo, int32_t numOfOutput, int32_t** rowEntryInfoOffset, SFunctionStateStore* pStore);
 void relocateColumnData(SSDataBlock* pBlock, const SArray* pColMatchInfo, SArray* pCols, bool outputEveryColumn);
 void initExecTimeWindowInfo(SColumnInfoData* pColData, STimeWindow* pQueryWindow);
 
@@ -178,11 +185,17 @@ void    cleanupQueryTableDataCond(SQueryTableDataCond* pCond);
 
 int32_t convertFillType(int32_t mode);
 int32_t resultrowComparAsc(const void* p1, const void* p2);
-int32_t isQualifiedTable(STableKeyInfo* info, SNode* pTagCond, void* metaHandle, bool* pQualified);
-
-void printDataBlock(SSDataBlock* pBlock, const char* flag);
+int32_t isQualifiedTable(STableKeyInfo* info, SNode* pTagCond, void* metaHandle, bool* pQualified, SStorageAPI* pAPI);
+char*   getStreamOpName(uint16_t opType);
+void    printDataBlock(SSDataBlock* pBlock, const char* flag, const char* taskIdStr);
+void    printSpecDataBlock(SSDataBlock* pBlock, const char* flag, const char* opStr, const char* taskIdStr);
 
 void getNextTimeWindow(const SInterval* pInterval, STimeWindow* tw, int32_t order);
 void getInitialStartTimeWindow(SInterval* pInterval, TSKEY ts, STimeWindow* w, bool ascQuery);
 
-#endif  // TDENGINE_QUERYUTIL_H
+TSKEY getStartTsKey(STimeWindow* win, const TSKEY* tsCols);
+void updateTimeWindowInfo(SColumnInfoData* pColData, STimeWindow* pWin, int64_t  delta);
+
+SSDataBlock* createTagValBlockForFilter(SArray* pColList, int32_t numOfTables, SArray* pUidTagList, void* pVnode,
+                                        SStorageAPI* pStorageAPI);
+#endif  // TDENGINE_EXECUTIL_H

@@ -100,7 +100,7 @@ int32_t dmReadEps(SDnodeData *pData) {
     goto _OVER;
   }
 
-  if (taosStatFile(file, NULL, NULL) < 0) {
+  if (taosStatFile(file, NULL, NULL, NULL) < 0) {
     dInfo("dnode file:%s not exist", file);
     code = 0;
     goto _OVER;
@@ -173,7 +173,7 @@ _OVER:
   dmResetEps(pData, pData->dnodeEps);
 
   if (pData->oldDnodeEps == NULL && dmIsEpChanged(pData, pData->dnodeId, tsLocalEp)) {
-    dError("localEp %s different with %s and need reconfigured", tsLocalEp, file);
+    dError("localEp %s different with %s and need to be reconfigured", tsLocalEp, file);
     terrno = TSDB_CODE_INVALID_CFG;
     return -1;
   }
@@ -225,7 +225,7 @@ int32_t dmWriteEps(SDnodeData *pData) {
   if (buffer == NULL) goto _OVER;
   terrno = 0;
 
-  pFile = taosOpenFile(file, TD_FILE_CREATE | TD_FILE_WRITE | TD_FILE_TRUNC);
+  pFile = taosOpenFile(file, TD_FILE_CREATE | TD_FILE_WRITE | TD_FILE_TRUNC | TD_FILE_WRITE_THROUGH);
   if (pFile == NULL) goto _OVER;
 
   int32_t len = strlen(buffer);
@@ -288,6 +288,8 @@ static void dmResetEps(SDnodeData *pData, SArray *dnodeEps) {
     taosHashPut(pData->dnodeHash, &pDnodeEp->id, sizeof(int32_t), pDnodeEp, sizeof(SDnodeEp));
   }
 
+  pData->validMnodeEps = true;
+
   dmPrintEps(pData);
 }
 
@@ -348,6 +350,7 @@ void dmRotateMnodeEpSet(SDnodeData *pData) {
 }
 
 void dmGetMnodeEpSetForRedirect(SDnodeData *pData, SRpcMsg *pMsg, SEpSet *pEpSet) {
+  if (!pData->validMnodeEps) return;
   dmGetMnodeEpSet(pData, pEpSet);
   dTrace("msg is redirected, handle:%p num:%d use:%d", pMsg->info.handle, pEpSet->numOfEps, pEpSet->inUse);
   for (int32_t i = 0; i < pEpSet->numOfEps; ++i) {
@@ -466,7 +469,7 @@ static int32_t dmReadDnodePairs(SDnodeData *pData) {
   char      file[PATH_MAX] = {0};
   snprintf(file, sizeof(file), "%s%sdnode%sep.json", tsDataDir, TD_DIRSEP, TD_DIRSEP);
 
-  if (taosStatFile(file, NULL, NULL) < 0) {
+  if (taosStatFile(file, NULL, NULL, NULL) < 0) {
     dDebug("dnode file:%s not exist", file);
     code = 0;
     goto _OVER;

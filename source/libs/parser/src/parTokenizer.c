@@ -42,6 +42,7 @@ static SKeyword keywordTable[] = {
     {"ASC",                  TK_ASC},
     {"AT_ONCE",              TK_AT_ONCE},
     {"BALANCE",              TK_BALANCE},
+    {"BATCH_SCAN",           TK_BATCH_SCAN},
     {"BETWEEN",              TK_BETWEEN},
     {"BIGINT",               TK_BIGINT},
     {"BINARY",               TK_BINARY},
@@ -62,6 +63,7 @@ static SKeyword keywordTable[] = {
     {"COMMENT",              TK_COMMENT},
     {"COMP",                 TK_COMP},
     {"COMPACT",              TK_COMPACT},
+    {"COMPACTS",             TK_COMPACTS},
     {"CONNECTION",           TK_CONNECTION},
     {"CONNECTIONS",          TK_CONNECTIONS},
     {"CONNS",                TK_CONNS},
@@ -103,6 +105,7 @@ static SKeyword keywordTable[] = {
     {"FORCE",                TK_FORCE},
     {"FUNCTION",             TK_FUNCTION},
     {"FUNCTIONS",            TK_FUNCTIONS},
+    {"GEOMETRY",             TK_GEOMETRY},
     {"GRANT",                TK_GRANT},
     {"GRANTS",               TK_GRANTS},
     {"GROUP",                TK_GROUP},
@@ -136,9 +139,10 @@ static SKeyword keywordTable[] = {
     {"MATCH",                TK_MATCH},
     {"MAXROWS",              TK_MAXROWS},
     {"MAX_DELAY",            TK_MAX_DELAY},
-    {"MAX_SPEED",            TK_MAX_SPEED},
+    {"BWLIMIT",              TK_BWLIMIT},
     {"MERGE",                TK_MERGE},
     {"META",                 TK_META},
+    {"ONLY",                 TK_ONLY},
     {"MINROWS",              TK_MINROWS},
     {"MINUS",                TK_MINUS},
     {"MNODE",                TK_MNODE},
@@ -151,6 +155,7 @@ static SKeyword keywordTable[] = {
     {"NONE",                 TK_NONE},
     {"NOT",                  TK_NOT},
     {"NOW",                  TK_NOW},
+    {"NO_BATCH_SCAN",        TK_NO_BATCH_SCAN},
     {"NULL",                 TK_NULL},
     {"NULL_F",               TK_NULL_F},
     {"NULLS",                TK_NULLS},
@@ -161,6 +166,7 @@ static SKeyword keywordTable[] = {
     {"OUTPUTTYPE",           TK_OUTPUTTYPE},
     {"PAGES",                TK_PAGES},
     {"PAGESIZE",             TK_PAGESIZE},
+    {"PARA_TABLES_SORT",     TK_PARA_TABLES_SORT},    
     {"PARTITION",            TK_PARTITION},
     {"PASS",                 TK_PASS},
     {"PORT",                 TK_PORT},
@@ -175,12 +181,15 @@ static SKeyword keywordTable[] = {
     {"QUERY",                TK_QUERY},
     {"RANGE",                TK_RANGE},
     {"RATIO",                TK_RATIO},
+    {"PAUSE",                TK_PAUSE},
     {"READ",                 TK_READ},
     {"REDISTRIBUTE",         TK_REDISTRIBUTE},
     {"RENAME",               TK_RENAME},
     {"REPLACE",              TK_REPLACE},
     {"REPLICA",              TK_REPLICA},
     {"RESET",                TK_RESET},
+    {"RESUME",               TK_RESUME},
+    {"RESTORE",              TK_RESTORE},
     {"RETENTIONS",           TK_RETENTIONS},
     {"REVOKE",               TK_REVOKE},
     {"ROLLUP",               TK_ROLLUP},
@@ -238,7 +247,9 @@ static SKeyword keywordTable[] = {
     {"TSERIES",              TK_TSERIES},
     {"TTL",                  TK_TTL},
     {"UNION",                TK_UNION},
+    {"UNSAFE",               TK_UNSAFE},
     {"UNSIGNED",             TK_UNSIGNED},
+    {"UNTREATED",            TK_UNTREATED},
     {"UPDATE",               TK_UPDATE},
     {"USE",                  TK_USE},
     {"USER",                 TK_USER},
@@ -252,6 +263,7 @@ static SKeyword keywordTable[] = {
     {"VERBOSE",              TK_VERBOSE},
     {"VGROUP",               TK_VGROUP},
     {"VGROUPS",              TK_VGROUPS},
+    {"VNODE",                TK_VNODE},
     {"VNODES",               TK_VNODES},
     {"WAL_FSYNC_PERIOD",     TK_WAL_FSYNC_PERIOD},
     {"WAL_LEVEL",            TK_WAL_LEVEL},
@@ -277,6 +289,7 @@ static SKeyword keywordTable[] = {
     {"_WEND",                TK_WEND},
     {"_WSTART",              TK_WSTART},
     {"ALIVE",                TK_ALIVE},
+    {"VARBINARY",            TK_VARBINARY},
 };
 // clang-format on
 
@@ -390,10 +403,14 @@ uint32_t tGetToken(const char* z, uint32_t* tokenId) {
         *tokenId = TK_NK_SLASH;
         return 1;
       }
+      bool isHint = false;
+      if (z[2] == '+') {
+        isHint = true;
+      }
       for (i = 3; z[i] && (z[i] != '/' || z[i - 1] != '*'); i++) {
       }
       if (z[i]) i++;
-      *tokenId = TK_NK_COMMENT;
+      *tokenId = isHint ? TK_NK_HINT : TK_NK_COMMENT;
       return i;
     }
     case '%': {
@@ -536,7 +553,7 @@ uint32_t tGetToken(const char* z, uint32_t* tokenId) {
         return i;
       } else if (next == 'x') {  // hex number
         *tokenId = TK_NK_HEX;
-        for (i = 2; isdigit(z[i]) || (z[i] >= 'a' && z[i] <= 'f') || (z[i] >= 'A' && z[i] <= 'F'); ++i) {
+        for (i = 2; isxdigit(z[i]) != 0; ++i) {
         }
 
         if (i == 2) {
@@ -586,6 +603,11 @@ uint32_t tGetToken(const char* z, uint32_t* tokenId) {
         break;
       }
 
+      // support float with no decimal part after the decimal point
+      if (z[i] == '.' && seg == 1) {
+        *tokenId = TK_NK_FLOAT;
+        i++;
+      }
       if ((z[i] == 'e' || z[i] == 'E') &&
           (isdigit(z[i + 1]) || ((z[i + 1] == '+' || z[i + 1] == '-') && isdigit(z[i + 2])))) {
         i += 2;
@@ -705,7 +727,7 @@ SToken tStrGetToken(const char* str, int32_t* i, bool isPrevOptr, bool* pIgnoreC
     // support parse the -/+number format
     if ((isPrevOptr) && (t0.type == TK_NK_MINUS || t0.type == TK_NK_PLUS)) {
       len = tGetToken(&str[*i + t0.n], &type);
-      if (type == TK_NK_INTEGER || type == TK_NK_FLOAT) {
+      if (type == TK_NK_INTEGER || type == TK_NK_FLOAT || type == TK_NK_BIN || type == TK_NK_HEX) {
         t0.type = type;
         t0.n += len;
       }

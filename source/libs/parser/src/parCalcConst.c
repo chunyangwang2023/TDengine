@@ -202,9 +202,25 @@ static int32_t calcConstProject(SNode* pProject, bool dual, SNode** pNew) {
   return code;
 }
 
+typedef struct SIsUselessColCtx  {
+  bool      isUseless;
+} SIsUselessColCtx ;
+
+EDealRes checkUselessCol(SNode *pNode, void *pContext) {
+  SIsUselessColCtx  *ctx = (SIsUselessColCtx *)pContext;
+  if (QUERY_NODE_FUNCTION == nodeType(pNode) && !fmIsScalarFunc(((SFunctionNode*)pNode)->funcId) &&
+      !fmIsPseudoColumnFunc(((SFunctionNode*)pNode)->funcId)) {
+    ctx->isUseless = false;  
+    return DEAL_RES_END;
+  }
+
+  return DEAL_RES_CONTINUE;
+}
+
 static bool isUselessCol(SExprNode* pProj) {
-  if (QUERY_NODE_FUNCTION == nodeType(pProj) && !fmIsScalarFunc(((SFunctionNode*)pProj)->funcId) &&
-      !fmIsPseudoColumnFunc(((SFunctionNode*)pProj)->funcId)) {
+  SIsUselessColCtx ctx = {.isUseless = true};
+  nodesWalkExpr((SNode*)pProj, checkUselessCol, (void *)&ctx);
+  if (!ctx.isUseless) {
     return false;
   }
   return NULL == ((SExprNode*)pProj)->pAssociation;
@@ -226,7 +242,7 @@ static SNode* createConstantValue() {
 static int32_t calcConstProjections(SCalcConstContext* pCxt, SSelectStmt* pSelect, bool subquery) {
   SNode* pProj = NULL;
   WHERE_EACH(pProj, pSelect->pProjectionList) {
-    if (subquery && !pSelect->isDistinct && isUselessCol((SExprNode*)pProj)) {
+    if (subquery && !pSelect->isDistinct && !pSelect->tagScan && isUselessCol((SExprNode*)pProj)) {
       ERASE_NODE(pSelect->pProjectionList);
       continue;
     }
@@ -268,6 +284,13 @@ static int32_t calcConstSelectWithoutFrom(SCalcConstContext* pCxt, SSelectStmt* 
 
 static int32_t calcConstSelectFrom(SCalcConstContext* pCxt, SSelectStmt* pSelect, bool subquery) {
   int32_t code = calcConstFromTable(pCxt, pSelect->pFromTable);
+  if (TSDB_CODE_SUCCESS == code && QUERY_NODE_TEMP_TABLE == nodeType(pSelect->pFromTable) &&
+      ((STempTableNode*)pSelect->pFromTable)->pSubquery != NULL &&
+      QUERY_NODE_SELECT_STMT == nodeType(((STempTableNode*)pSelect->pFromTable)->pSubquery) &&
+      ((SSelectStmt*)((STempTableNode*)pSelect->pFromTable)->pSubquery)->isEmptyResult){
+    pSelect->isEmptyResult = true;
+    return code;
+  }      
   if (TSDB_CODE_SUCCESS == code) {
     code = calcConstProjections(pCxt, pSelect, subquery);
   }
@@ -310,6 +333,9 @@ static int32_t calcConstDelete(SCalcConstContext* pCxt, SDeleteStmt* pDelete) {
   int32_t code = calcConstFromTable(pCxt, pDelete->pFromTable);
   if (TSDB_CODE_SUCCESS == code) {
     code = calcConstStmtCondition(pCxt, &pDelete->pWhere, &pDelete->deleteZeroRows);
+  }
+  if (code == TSDB_CODE_SUCCESS && pDelete->timeRange.skey > pDelete->timeRange.ekey) {
+    pDelete->deleteZeroRows = true;
   }
   return code;
 }
@@ -369,18 +395,33 @@ static bool notRefByOrderBy(SColumnNode* pCol, SNodeList* pOrderByList) {
   return !cxt.hasThisCol;
 }
 
+static bool isDistinctSubQuery(SNode* pNode) {
+  if (NULL == pNode) {
+    return false;
+  }
+  switch (nodeType(pNode)) {
+    case QUERY_NODE_SELECT_STMT:
+      return ((SSelectStmt*)pNode)->isDistinct;
+    case QUERY_NODE_SET_OPERATOR:
+      return isDistinctSubQuery((((SSetOperator*)pNode)->pLeft)) || isDistinctSubQuery((((SSetOperator*)pNode)->pLeft));
+    default:
+      break;
+  }
+  return false;
+}
+
 static bool isSetUselessCol(SSetOperator* pSetOp, int32_t index, SExprNode* pProj) {
   if (!isUselessCol(pProj)) {
     return false;
   }
 
   SNodeList* pLeftProjs = getChildProjection(pSetOp->pLeft);
-  if (!isUselessCol((SExprNode*)nodesListGetNode(pLeftProjs, index))) {
+  if (!isUselessCol((SExprNode*)nodesListGetNode(pLeftProjs, index)) || isDistinctSubQuery(pSetOp->pLeft)) {
     return false;
   }
 
   SNodeList* pRightProjs = getChildProjection(pSetOp->pRight);
-  if (!isUselessCol((SExprNode*)nodesListGetNode(pRightProjs, index))) {
+  if (!isUselessCol((SExprNode*)nodesListGetNode(pRightProjs, index)) || isDistinctSubQuery(pSetOp->pLeft)) {
     return false;
   }
 
@@ -465,6 +506,9 @@ static bool isEmptyResultQuery(SNode* pStmt) {
       }
       break;
     }
+    case QUERY_NODE_DELETE_STMT:
+      isEmptyResult = ((SDeleteStmt*)pStmt)->deleteZeroRows;
+      break;
     default:
       break;
   }

@@ -33,7 +33,7 @@ column_definition:
 SHOW STABLES [LIKE tb_name_wildcard];
 ```
 
-The preceding SQL statement shows all supertables in the current TDengine database, including the name, creation time, number of columns, number of tags, and number of subtables for each supertable.
+The preceding SQL statement shows all supertables in the current TDengine database.
 
 ### View the CREATE Statement for a Supertable
 
@@ -50,6 +50,11 @@ DESCRIBE [db_name.]stb_name;
 ```
 
 ### View tag information for all child tables in the supertable
+
+```
+SHOW TABLE TAGS FROM table_name [FROM db_name];
+SHOW TABLE TAGS FROM [db_name.]table_name;
+```
 
 ```
 taos> SHOW TABLE TAGS FROM st1;

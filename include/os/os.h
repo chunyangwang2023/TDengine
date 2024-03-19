@@ -58,8 +58,7 @@ extern "C" {
 #ifndef _TD_SYLIXOS_
 #include <argp.h>
 #include <sys/prctl.h>
-#endif
-
+#include <sys/sysinfo.h>
 #if defined(_TD_X86_)
 #include <cpuid.h>
 #endif

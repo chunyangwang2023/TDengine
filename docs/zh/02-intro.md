@@ -6,7 +6,14 @@ toc_max_heading_level: 2
 
 TDengine 是一款开源、高性能、云原生的[时序数据库](https://tdengine.com/tsdb/)，且针对物联网、车联网、工业互联网、金融、IT 运维等场景进行了优化。TDengine 的代码，包括集群功能，都在 GNU AGPL v3.0 下开源。除核心的时序数据库功能外，TDengine 还提供[缓存](../develop/cache/)、[数据订阅](../develop/tmq)、[流式计算](../develop/stream)等其它功能以降低系统复杂度及研发和运维成本。
 
-本章节介绍 TDengine 的主要功能、竞争优势、适用场景、与其他数据库的对比测试等等，让大家对 TDengine 有个整体的了解。
+本章节介绍 TDengine 的主要产品和功能、竞争优势、适用场景、与其他数据库的对比测试等等，让大家对 TDengine 有个整体的了解。
+
+## 主要产品
+
+TDengine 有三个主要产品：TDengine Pro （即 TDengine 企业版），TDengine Cloud，和 TDengine OSS，关于它们的具体定义请参考 
+- [TDengine 企业版](https://www.taosdata.com/tdengine-pro)
+- [TDengine 云服务](https://cloud.taosdata.com/?utm_source=menu&utm_medium=webcn)
+- [TDengine 开源版](https://www.taosdata.com/tdengine-oss)
 
 ## 主要功能
 
@@ -92,7 +99,7 @@ TDengine 的主要功能如下：
 
 ## 典型适用场景
 
-作为一个高性能、分布式、支持 SQL 的时序数据库（Database），TDengine 的典型适用场景包括但不限于 IoT、工业互联网、车联网、IT 运维、能源、金融证券等领域。需要指出的是，TDengine 是针对时序数据场景设计的专用数据库和专用大数据处理工具，因其充分利用了时序大数据的特点，它无法用来处理网络爬虫、微博、微信、电商、ERP、CRM 等通用型数据。下面本文将对适用场景做更多详细的分析。
+作为一个高性能、分布式、支持 SQL 的时序数据库（Time-series Database），TDengine 的典型适用场景包括但不限于 IoT、工业互联网、车联网、IT 运维、能源、金融证券等领域。需要指出的是，TDengine 是针对时序数据场景设计的专用数据库和专用大数据处理工具，因其充分利用了时序大数据的特点，它无法用来处理网络爬虫、微博、微信、电商、ERP、CRM 等通用型数据。下面本文将对适用场景做更多详细的分析。
 
 ### 数据源特点和需求
 

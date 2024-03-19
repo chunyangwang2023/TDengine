@@ -13,8 +13,8 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <util/tsimplehash.h>
 #include "tsdb.h"
+#include "util/tsimplehash.h"
 
 #define MEM_MIN_HASH 1024
 #define SL_MAX_LEVEL 5
@@ -37,6 +37,16 @@ static int32_t tsdbInsertRowDataToTable(SMemTable *pMemTable, STbData *pTbData, 
                                         SSubmitTbData *pSubmitTbData, int32_t *affectedRows);
 static int32_t tsdbInsertColDataToTable(SMemTable *pMemTable, STbData *pTbData, int64_t version,
                                         SSubmitTbData *pSubmitTbData, int32_t *affectedRows);
+
+static int32_t tTbDataCmprFn(const SRBTreeNode *n1, const SRBTreeNode *n2) {
+  STbData *tbData1 = TCONTAINER_OF(n1, STbData, rbtn);
+  STbData *tbData2 = TCONTAINER_OF(n2, STbData, rbtn);
+  if (tbData1->suid < tbData2->suid) return -1;
+  if (tbData1->suid > tbData2->suid) return 1;
+  if (tbData1->uid < tbData2->uid) return -1;
+  if (tbData1->uid > tbData2->uid) return 1;
+  return 0;
+}
 
 int32_t tsdbMemTableCreate(STsdb *pTsdb, SMemTable **ppMemTable) {
   int32_t    code = 0;
@@ -66,6 +76,7 @@ int32_t tsdbMemTableCreate(STsdb *pTsdb, SMemTable **ppMemTable) {
     goto _err;
   }
   vnodeBufPoolRef(pMemTable->pPool);
+  tRBTreeCreate(pMemTable->tbDataTree, tTbDataCmprFn);
 
   *ppMemTable = pMemTable;
   return code;
@@ -141,7 +152,6 @@ int32_t tsdbDeleteTableData(STsdb *pTsdb, int64_t version, tb_uid_t suid, tb_uid
   SMemTable *pMemTable = pTsdb->mem;
   STbData   *pTbData = NULL;
   SVBufPool *pPool = pTsdb->pVnode->inUse;
-  TSDBKEY    lastKey = {.version = version, .ts = eKey};
 
   // check if table exists
   SMetaInfo info;
@@ -171,6 +181,8 @@ int32_t tsdbDeleteTableData(STsdb *pTsdb, int64_t version, tb_uid_t suid, tb_uid
   pDelData->sKey = sKey;
   pDelData->eKey = eKey;
   pDelData->pNext = NULL;
+
+  taosWLockLatch(&pTbData->lock);
   if (pTbData->pHead == NULL) {
     ASSERT(pTbData->pTail == NULL);
     pTbData->pHead = pTbData->pTail = pDelData;
@@ -178,11 +190,12 @@ int32_t tsdbDeleteTableData(STsdb *pTsdb, int64_t version, tb_uid_t suid, tb_uid
     pTbData->pTail->pNext = pDelData;
     pTbData->pTail = pDelData;
   }
+  taosWUnLockLatch(&pTbData->lock);
 
   pMemTable->nDel++;
   pMemTable->minVer = TMIN(pMemTable->minVer, version);
-  pMemTable->maxVer = TMIN(pMemTable->maxVer, version);
-
+  pMemTable->maxVer = TMAX(pMemTable->maxVer, version);
+  /*
   if (TSDB_CACHE_LAST_ROW(pMemTable->pTsdb->pVnode->config) && tsdbKeyCmprFn(&lastKey, &pTbData->maxKey) >= 0) {
     tsdbCacheDeleteLastrow(pTsdb->lruCache, pTbData->uid, eKey);
   }
@@ -190,6 +203,10 @@ int32_t tsdbDeleteTableData(STsdb *pTsdb, int64_t version, tb_uid_t suid, tb_uid
   if (TSDB_CACHE_LAST(pMemTable->pTsdb->pVnode->config)) {
     tsdbCacheDeleteLast(pTsdb->lruCache, pTbData->uid, eKey);
   }
+  */
+  // if (eKey >= pTbData->maxKey && sKey <= pTbData->maxKey) {
+  tsdbCacheDel(pTsdb, suid, uid, sKey, eKey);
+  //}
 
   tsdbTrace("vgId:%d, delete data from table suid:%" PRId64 " uid:%" PRId64 " skey:%" PRId64 " eKey:%" PRId64
             " at version %" PRId64,
@@ -285,8 +302,8 @@ bool tsdbTbDataIterNext(STbDataIter *pIter) {
 
 int64_t tsdbCountTbDataRows(STbData *pTbData) {
   SMemSkipListNode *pNode = pTbData->sl.pHead;
-  int64_t rowsNum = 0;
-  
+  int64_t           rowsNum = 0;
+
   while (NULL != pNode) {
     pNode = SL_GET_NODE_FORWARD(pNode, 0);
     if (pNode == pTbData->sl.pTail) {
@@ -299,17 +316,17 @@ int64_t tsdbCountTbDataRows(STbData *pTbData) {
   return rowsNum;
 }
 
-void tsdbMemTableCountRows(SMemTable *pMemTable, SSHashObj* pTableMap, int64_t *rowsNum) {
+void tsdbMemTableCountRows(SMemTable *pMemTable, SSHashObj *pTableMap, int64_t *rowsNum) {
   taosRLockLatch(&pMemTable->latch);
   for (int32_t i = 0; i < pMemTable->nBucket; ++i) {
     STbData *pTbData = pMemTable->aBucket[i];
     while (pTbData) {
-      void* p = tSimpleHashGet(pTableMap, &pTbData->uid, sizeof(pTbData->uid));
+      void *p = tSimpleHashGet(pTableMap, &pTbData->uid, sizeof(pTbData->uid));
       if (p == NULL) {
         pTbData = pTbData->next;
         continue;
       }
-      
+
       *rowsNum += tsdbCountTbDataRows(pTbData);
       pTbData = pTbData->next;
     }
@@ -387,6 +404,7 @@ static int32_t tsdbGetOrCreateTbData(SMemTable *pMemTable, tb_uid_t suid, tb_uid
     SL_NODE_BACKWARD(pTbData->sl.pHead, iLevel) = NULL;
     SL_NODE_FORWARD(pTbData->sl.pTail, iLevel) = NULL;
   }
+  taosInitRWLatch(&pTbData->lock);
 
   taosWLockLatch(&pMemTable->latch);
 
@@ -402,6 +420,8 @@ static int32_t tsdbGetOrCreateTbData(SMemTable *pMemTable, tb_uid_t suid, tb_uid
   pTbData->next = pMemTable->aBucket[idx];
   pMemTable->aBucket[idx] = pTbData;
   pMemTable->nTbData++;
+
+  tRBTreePut(pMemTable->tbDataTree, pTbData->rbtn);
 
   taosWUnLockLatch(&pMemTable->latch);
 
@@ -669,14 +689,10 @@ static int32_t tsdbInsertColDataToTable(SMemTable *pMemTable, STbData *pTbData, 
 
   if (key.ts >= pTbData->maxKey) {
     pTbData->maxKey = key.ts;
-
-    if (TSDB_CACHE_LAST_ROW(pMemTable->pTsdb->pVnode->config)) {
-      tsdbCacheInsertLastrow(pMemTable->pTsdb->lruCache, pMemTable->pTsdb, pTbData->uid, &lRow, true);
-    }
   }
 
-  if (TSDB_CACHE_LAST(pMemTable->pTsdb->pVnode->config)) {
-    tsdbCacheInsertLast(pMemTable->pTsdb->lruCache, pTbData->uid, &lRow, pMemTable->pTsdb);
+  if (!TSDB_CACHE_NO(pMemTable->pTsdb->pVnode->config)) {
+    tsdbCacheUpdate(pMemTable->pTsdb, pTbData->suid, pTbData->uid, &lRow);
   }
 
   // SMemTable
@@ -737,14 +753,9 @@ static int32_t tsdbInsertRowDataToTable(SMemTable *pMemTable, STbData *pTbData, 
 
   if (key.ts >= pTbData->maxKey) {
     pTbData->maxKey = key.ts;
-
-    if (TSDB_CACHE_LAST_ROW(pMemTable->pTsdb->pVnode->config)) {
-      tsdbCacheInsertLastrow(pMemTable->pTsdb->lruCache, pMemTable->pTsdb, pTbData->uid, &lRow, true);
-    }
   }
-
-  if (TSDB_CACHE_LAST(pMemTable->pTsdb->pVnode->config)) {
-    tsdbCacheInsertLast(pMemTable->pTsdb->lruCache, pTbData->uid, &lRow, pMemTable->pTsdb);
+  if (!TSDB_CACHE_NO(pMemTable->pTsdb->pVnode->config)) {
+    tsdbCacheUpdate(pMemTable->pTsdb, pTbData->suid, pTbData->uid, &lRow);
   }
 
   // SMemTable

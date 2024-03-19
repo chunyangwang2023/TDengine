@@ -21,6 +21,9 @@ static TdThreadOnce transModuleInit = PTHREAD_ONCE_INIT;
 
 static int32_t refMgt;
 static int32_t instMgt;
+static int32_t transSyncMsgMgt;
+
+void transDestroySyncMsg(void* msg);
 
 int32_t transCompressMsg(char* msg, int32_t len) {
   int32_t        ret = 0;
@@ -84,6 +87,7 @@ void transFreeMsg(void* msg) {
   if (msg == NULL) {
     return;
   }
+  tTrace("rpc free cont:%p", (char*)msg - TRANS_MSG_OVERHEAD);
   taosMemoryFree((char*)msg - sizeof(STransMsgHead));
 }
 int transSockInfo2Str(struct sockaddr* sockname, char* dst) {
@@ -192,7 +196,7 @@ bool transReadComplete(SConnBuffer* connBuf) {
       memcpy((char*)&head, connBuf->buf, sizeof(head));
       int32_t msgLen = (int32_t)htonl(head.msgLen);
       p->total = msgLen;
-      p->invalid = TRANS_NOVALID_PACKET(htonl(head.magicNum));
+      p->invalid = TRANS_NOVALID_PACKET(htonl(head.magicNum)) || head.version != TRANS_VER;
     }
     if (p->total >= p->len) {
       p->left = p->total - p->len;
@@ -203,10 +207,10 @@ bool transReadComplete(SConnBuffer* connBuf) {
   return (p->left == 0 || p->invalid) ? true : false;
 }
 
-int transSetConnOption(uv_tcp_t* stream) {
+int transSetConnOption(uv_tcp_t* stream, int keepalive) {
 #if defined(WINDOWS) || defined(DARWIN)
 #else
-  uv_tcp_keepalive(stream, 1, 20);
+  uv_tcp_keepalive(stream, 1, keepalive);
 #endif
   return uv_tcp_nodelay(stream, 1);
   // int ret = uv_tcp_keepalive(stream, 5, 60);
@@ -603,11 +607,13 @@ bool transEpSetIsEqual(SEpSet* a, SEpSet* b) {
 static void transInitEnv() {
   refMgt = transOpenRefMgt(50000, transDestoryExHandle);
   instMgt = taosOpenRef(50, rpcCloseImpl);
+  transSyncMsgMgt = taosOpenRef(50, transDestroySyncMsg);
   uv_os_setenv("UV_TCP_SINGLE_ACCEPT", "1");
 }
 static void transDestroyEnv() {
   transCloseRefMgt(refMgt);
   transCloseRefMgt(instMgt);
+  transCloseRefMgt(transSyncMsgMgt);
 }
 
 void transInit() {
@@ -617,6 +623,7 @@ void transInit() {
 
 int32_t transGetRefMgt() { return refMgt; }
 int32_t transGetInstMgt() { return instMgt; }
+int32_t transGetSyncMsgMgt() { return transSyncMsgMgt; }
 
 void transCleanup() {
   // clean env
@@ -653,4 +660,13 @@ void transDestoryExHandle(void* handle) {
     return;
   }
   taosMemoryFree(handle);
+}
+void transDestroySyncMsg(void* msg) {
+  if (msg == NULL) return;
+  STransSyncMsg* pSyncMsg = msg;
+  tsem_destroy(pSyncMsg->pSem);
+  taosMemoryFree(pSyncMsg->pSem);
+  transFreeMsg(pSyncMsg->pRsp->pCont);
+  taosMemoryFree(pSyncMsg->pRsp);
+  taosMemoryFree(pSyncMsg);
 }

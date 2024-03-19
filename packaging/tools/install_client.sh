@@ -116,22 +116,14 @@ function install_bin() {
   ${csudo}cp -r ${script_dir}/bin/* ${install_main_dir}/bin && ${csudo}chmod 0555 ${install_main_dir}/bin/*
 
   #Make link
-  [ -x ${install_main_dir}/bin/${clientName} ] && ${csudo}ln -s ${install_main_dir}/bin/${clientName} ${bin_link_dir}/${clientName}                 || :
+  [ -x ${install_main_dir}/bin/${clientName2} ] && ${csudo}ln -s ${install_main_dir}/bin/${clientName2} ${bin_link_dir}/${clientName2} || :
   if [ "$osType" != "Darwin" ]; then
       [ -x ${install_main_dir}/bin/${demoName2} ] && ${csudo}ln -s ${install_main_dir}/bin/${demoName2} ${bin_link_dir}/${demoName2}  || :
   fi
   [ -x ${install_main_dir}/bin/remove_client.sh ] && ${csudo}ln -s ${install_main_dir}/bin/remove_client.sh ${bin_link_dir}/${uninstallScript} || :
-  [ -x ${install_main_dir}/bin/set_core.sh ] && ${csudo}ln -s ${install_main_dir}/bin/set_core.sh ${bin_link_dir}/set_core || :
-
-  if [ "$verMode" == "cluster" ] && [ "$clientName" != "$clientName2" ]; then
-    #Make link
-    [ -x ${install_main_dir}/bin/${clientName2} ] && ${csudo}ln -s ${install_main_dir}/bin/${clientName2} ${bin_link_dir}/${clientName2}                 || :
-    if [ "$osType" != "Darwin" ]; then
-        [ -x ${install_main_dir}/bin/${demoName2} ] && ${csudo}ln -s ${install_main_dir}/bin/${demoName2} ${bin_link_dir}/${demoName2}  || :
-        [ -x ${install_main_dir}/bin/${benchmarkName2} ] && ${csudo}ln -s ${install_main_dir}/bin/${benchmarkName2} ${bin_link_dir}/${benchmarkName2}  || :
-    fi
-    [ -x ${install_main_dir}/bin/remove_client.sh ] && ${csudo}ln -sf ${install_main_dir}/bin/remove_client.sh ${bin_link_dir}/${uninstallScript2} || :
-  fi
+  [ -x ${install_main_dir}/bin/set_core.sh ] && ${csudo}ln -s ${install_main_dir}/bin/set_core.sh ${bin_link_dir}/set_core || :  
+  [ -x ${install_main_dir}/bin/${benchmarkName2} ] && ${csudo}ln -s ${install_main_dir}/bin/${benchmarkName2} ${bin_link_dir}/${benchmarkName2}  || :
+  [ -x ${install_main_dir}/bin/${dumpName2} ] && ${csudo}ln -s ${install_main_dir}/bin/${dumpName2} ${bin_link_dir}/${dumpName2} || :
 }
 
 function clean_lib() {
@@ -180,10 +172,11 @@ function install_lib() {
 }
 
 function install_header() {
-    ${csudo}rm -f ${inc_link_dir}/taos.h ${inc_link_dir}/taosdef.h ${inc_link_dir}/taoserror.h  ${inc_link_dir}/taosudf.h  || :
+    ${csudo}rm -f ${inc_link_dir}/taos.h ${inc_link_dir}/taosdef.h ${inc_link_dir}/tdef.h ${inc_link_dir}/taoserror.h  ${inc_link_dir}/taosudf.h  || :
     ${csudo}cp -f ${script_dir}/inc/* ${install_main_dir}/include && ${csudo}chmod 644 ${install_main_dir}/include/*
     ${csudo}ln -s ${install_main_dir}/include/taos.h ${inc_link_dir}/taos.h
     ${csudo}ln -s ${install_main_dir}/include/taosdef.h ${inc_link_dir}/taosdef.h
+    ${csudo}ln -s ${install_main_dir}/include/tdef.h ${inc_link_dir}/tdef.h
     ${csudo}ln -s ${install_main_dir}/include/taoserror.h ${inc_link_dir}/taoserror.h
     ${csudo}ln -s ${install_main_dir}/include/taosudf.h ${inc_link_dir}/taosudf.h    
 
@@ -214,13 +207,13 @@ function install_jemalloc() {
             ${csudo}/usr/bin/install -c -m 755 ${jemalloc_dir}/lib/libjemalloc.so.2 /usr/local/lib
             ${csudo}ln -sf libjemalloc.so.2 /usr/local/lib/libjemalloc.so
             ${csudo}/usr/bin/install -c -d /usr/local/lib
-            if [ -f ${jemalloc_dir}/lib/libjemalloc.a ]; then
-                ${csudo}/usr/bin/install -c -m 755 ${jemalloc_dir}/lib/libjemalloc.a /usr/local/lib
-            fi
-            if [ -f ${jemalloc_dir}/lib/libjemalloc_pic.a ]; then
-                ${csudo}/usr/bin/install -c -m 755 ${jemalloc_dir}/lib/libjemalloc_pic.a /usr/local/lib
-            fi
-            if [ -f ${jemalloc_dir}/lib/libjemalloc_pic.a ]; then
+            # if [ -f ${jemalloc_dir}/lib/libjemalloc.a ]; then
+            #     ${csudo}/usr/bin/install -c -m 755 ${jemalloc_dir}/lib/libjemalloc.a /usr/local/lib
+            # fi
+            # if [ -f ${jemalloc_dir}/lib/libjemalloc_pic.a ]; then
+            #     ${csudo}/usr/bin/install -c -m 755 ${jemalloc_dir}/lib/libjemalloc_pic.a /usr/local/lib
+            # fi
+            if [ -f ${jemalloc_dir}/lib/pkgconfig/jemalloc.pc ]; then
                 ${csudo}/usr/bin/install -c -d /usr/local/lib/pkgconfig
                 ${csudo}/usr/bin/install -c -m 644 ${jemalloc_dir}/lib/pkgconfig/jemalloc.pc /usr/local/lib/pkgconfig
             fi
@@ -267,7 +260,9 @@ function install_log() {
 }
 
 function install_connector() {
-    ${csudo}cp -rf ${script_dir}/connector/ ${install_main_dir}/
+    if [ -d ${script_dir}/connector ]; then
+        ${csudo}cp -rf ${script_dir}/connector/ ${install_main_dir}/
+    fi
 }
 
 function install_examples() {

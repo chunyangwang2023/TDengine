@@ -133,12 +133,13 @@ function kill_taosd() {
 function install_include() {
     log_print "start install include from ${inc_dir} to ${inc_link_dir}"
     ${csudo}mkdir -p ${inc_link_dir}
-    ${csudo}rm -f ${inc_link_dir}/taos.h ${inc_link_dir}/taosdef.h ${inc_link_dir}/taoserror.h ${inc_link_dir}/taosudf.h || :
+    ${csudo}rm -f ${inc_link_dir}/taos.h ${inc_link_dir}/taosdef.h ${inc_link_dir}/taoserror.h ${inc_link_dir}/tdef.h ${inc_link_dir}/taosudf.h || :
     [ -f ${inc_link_dir}/taosws.h ] && ${csudo}rm -f ${inc_link_dir}/taosws.h ||:
 
     ${csudo}ln -s ${inc_dir}/taos.h ${inc_link_dir}/taos.h
     ${csudo}ln -s ${inc_dir}/taosdef.h ${inc_link_dir}/taosdef.h
     ${csudo}ln -s ${inc_dir}/taoserror.h ${inc_link_dir}/taoserror.h
+    ${csudo}ln -s ${inc_dir}/tdef.h ${inc_link_dir}/tdef.h
     ${csudo}ln -s ${inc_dir}/taosudf.h ${inc_link_dir}/taosudf.h
 
     [ -f ${inc_dir}/taosws.h ] && ${csudo}ln -sf ${inc_dir}/taosws.h ${inc_link_dir}/taosws.h ||:
@@ -169,13 +170,13 @@ function install_jemalloc() {
       ${csudo}/usr/bin/install -c -m 755 ${jemalloc_dir}/lib/libjemalloc.so.2 /usr/local/lib
       ${csudo}ln -sf libjemalloc.so.2 /usr/local/lib/libjemalloc.so
       ${csudo}/usr/bin/install -c -d /usr/local/lib
-      if [ -f ${jemalloc_dir}/lib/libjemalloc.a ]; then
-        ${csudo}/usr/bin/install -c -m 755 ${jemalloc_dir}/lib/libjemalloc.a /usr/local/lib
-      fi
-      if [ -f ${jemalloc_dir}/lib/libjemalloc_pic.a ]; then
-        ${csudo}/usr/bin/install -c -m 755 ${jemalloc_dir}/lib/libjemalloc_pic.a /usr/local/lib
-      fi
-      if [ -f ${jemalloc_dir}/lib/libjemalloc_pic.a ]; then
+      # if [ -f ${jemalloc_dir}/lib/libjemalloc.a ]; then
+      #   ${csudo}/usr/bin/install -c -m 755 ${jemalloc_dir}/lib/libjemalloc.a /usr/local/lib
+      # fi
+      # if [ -f ${jemalloc_dir}/lib/libjemalloc_pic.a ]; then
+      #   ${csudo}/usr/bin/install -c -m 755 ${jemalloc_dir}/lib/libjemalloc_pic.a /usr/local/lib
+      # fi
+      if [ -f ${jemalloc_dir}/lib/pkgconfig/jemalloc.pc ]; then
         ${csudo}/usr/bin/install -c -d /usr/local/lib/pkgconfig
         ${csudo}/usr/bin/install -c -m 644 ${jemalloc_dir}/lib/pkgconfig/jemalloc.pc /usr/local/lib/pkgconfig
       fi

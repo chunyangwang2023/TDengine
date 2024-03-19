@@ -27,29 +27,28 @@
 // equal =
 #define IS_EQUAL(sql) (*(sql) == EQUAL && *((sql)-1) != SLASH)
 // quote "
-//#define IS_QUOTE(sql) (*(sql) == QUOTE && *((sql)-1) != SLASH)
+// #define IS_QUOTE(sql) (*(sql) == QUOTE && *((sql)-1) != SLASH)
 // SLASH
 
-#define IS_SLASH_LETTER_IN_FIELD_VALUE(sql)                                                           \
-  (*((sql)-1) == SLASH && (*(sql) == QUOTE || *(sql) == SLASH))
+#define IS_SLASH_LETTER_IN_FIELD_VALUE(sql) (*((sql)-1) == SLASH && (*(sql) == QUOTE || *(sql) == SLASH))
 
-#define IS_SLASH_LETTER_IN_TAG_FIELD_KEY(sql)                                                         \
+#define IS_SLASH_LETTER_IN_TAG_FIELD_KEY(sql) \
   (*((sql)-1) == SLASH && (*(sql) == COMMA || *(sql) == SPACE || *(sql) == EQUAL))
 
-#define PROCESS_SLASH_IN_FIELD_VALUE(key, keyLen)           \
-  for (int i = 1; i < keyLen; ++i) {                        \
-    if (IS_SLASH_LETTER_IN_FIELD_VALUE(key + i)) {          \
-      MOVE_FORWARD_ONE(key + i, keyLen - i); \
-      keyLen--;                              \
-    }                                        \
+#define PROCESS_SLASH_IN_FIELD_VALUE(key, keyLen)  \
+  for (int i = 1; i < keyLen; ++i) {               \
+    if (IS_SLASH_LETTER_IN_FIELD_VALUE(key + i)) { \
+      MOVE_FORWARD_ONE(key + i, keyLen - i);       \
+      keyLen--;                                    \
+    }                                              \
   }
 
-#define PROCESS_SLASH_IN_TAG_FIELD_KEY(key, keyLen)           \
-  for (int i = 1; i < keyLen; ++i) {         \
-    if (IS_SLASH_LETTER_IN_TAG_FIELD_KEY(key + i)) {          \
-      MOVE_FORWARD_ONE(key + i, keyLen - i); \
-      keyLen--;                              \
-    }                                        \
+#define PROCESS_SLASH_IN_TAG_FIELD_KEY(key, keyLen)  \
+  for (int i = 1; i < keyLen; ++i) {                 \
+    if (IS_SLASH_LETTER_IN_TAG_FIELD_KEY(key + i)) { \
+      MOVE_FORWARD_ONE(key + i, keyLen - i);         \
+      keyLen--;                                      \
+    }                                                \
   }
 
 #define BINARY_ADD_LEN 2  // "binary"   2 means " "
@@ -71,7 +70,7 @@ static int64_t smlParseInfluxTime(SSmlHandle *info, const char *data, int32_t le
   int64_t ts = smlGetTimeValue(data, len, fromPrecision, toPrecision);
   if (unlikely(ts == -1)) {
     smlBuildInvalidDataMsg(&info->msgBuf, "invalid timestamp", data);
-    return -1;
+    return TSDB_CODE_SML_INVALID_DATA;
   }
   return ts;
 }
@@ -98,6 +97,68 @@ int32_t smlParseValue(SSmlKv *pVal, SSmlMsgBuf *msg) {
         return TSDB_CODE_PAR_INVALID_VAR_COLUMN_LEN;
       }
       pVal->value += (NCHAR_ADD_LEN - 1);
+      return TSDB_CODE_SUCCESS;
+    }
+    return TSDB_CODE_TSC_INVALID_VALUE;
+  }
+
+  if (pVal->value[0] == 'g' || pVal->value[0] == 'G') {  // geometry
+    if (pVal->value[1] == '"' && pVal->value[pVal->length - 1] == '"' && pVal->length >= sizeof("POINT")+3) {
+      int32_t code = initCtxGeomFromText();
+      if (code != TSDB_CODE_SUCCESS) {
+        return code;
+      }
+      char* tmp = taosMemoryCalloc(pVal->length, 1);
+      memcpy(tmp, pVal->value + NCHAR_ADD_LEN - 1, pVal->length - NCHAR_ADD_LEN);
+      code = doGeomFromText(tmp, (unsigned char **)&pVal->value, &pVal->length);
+      taosMemoryFree(tmp);
+      if (code != TSDB_CODE_SUCCESS) {
+        return code;
+      }
+
+      pVal->type = TSDB_DATA_TYPE_GEOMETRY;
+      if (pVal->length > TSDB_MAX_BINARY_LEN - VARSTR_HEADER_SIZE) {
+        geosFreeBuffer((void*)(pVal->value));
+        return TSDB_CODE_PAR_INVALID_VAR_COLUMN_LEN;
+      }
+      return TSDB_CODE_SUCCESS;
+    }
+    return TSDB_CODE_TSC_INVALID_VALUE;
+  }
+
+  if (pVal->value[0] == 'b' || pVal->value[0] == 'B') {  // varbinary
+    if (pVal->value[1] == '"' && pVal->value[pVal->length - 1] == '"' && pVal->length >= 3) {
+      pVal->type = TSDB_DATA_TYPE_VARBINARY;
+      if(isHex(pVal->value + NCHAR_ADD_LEN - 1, pVal->length - NCHAR_ADD_LEN)){
+        if(!isValidateHex(pVal->value + NCHAR_ADD_LEN - 1, pVal->length - NCHAR_ADD_LEN)){
+          return TSDB_CODE_PAR_INVALID_VARBINARY;
+        }
+
+        void* data = NULL;
+        uint32_t size = 0;
+        if(taosHex2Ascii(pVal->value + NCHAR_ADD_LEN - 1, pVal->length - NCHAR_ADD_LEN, &data, &size) < 0){
+          return TSDB_CODE_OUT_OF_MEMORY;
+        }
+
+        if (size + VARSTR_HEADER_SIZE > TSDB_MAX_VARBINARY_LEN) {
+          taosMemoryFree(data);
+          return TSDB_CODE_PAR_INVALID_VAR_COLUMN_LEN;
+        }
+        pVal->value  = data;
+        pVal->length = size;
+      }else{
+        pVal->length -= NCHAR_ADD_LEN;
+        if (pVal->length > TSDB_MAX_VARBINARY_LEN - VARSTR_HEADER_SIZE) {
+          return TSDB_CODE_PAR_INVALID_VAR_COLUMN_LEN;
+        }
+        void *data = taosMemoryMalloc(pVal->length);
+        if(data == NULL){
+          return TSDB_CODE_OUT_OF_MEMORY;
+        }
+        memcpy(data, pVal->value + (NCHAR_ADD_LEN - 1), pVal->length);
+        pVal->value = data;
+      }
+
       return TSDB_CODE_SUCCESS;
     }
     return TSDB_CODE_TSC_INVALID_VALUE;
@@ -152,15 +213,16 @@ static int32_t smlParseTagKv(SSmlHandle *info, char **sql, char *sqlEnd, SSmlLin
 
       SSmlSTableMeta *sMeta = NULL;
       if (unlikely(tmp == NULL)) {
-        char* measure = currElement->measure;
+        char *measure = currElement->measure;
         int   measureLen = currElement->measureLen;
-        if(currElement->measureEscaped){
-          measure = (char*)taosMemoryMalloc(currElement->measureLen);
+        if (currElement->measureEscaped) {
+          measure = (char *)taosMemoryMalloc(currElement->measureLen);
           memcpy(measure, currElement->measure, currElement->measureLen);
           PROCESS_SLASH_IN_MEASUREMENT(measure, measureLen);
+          smlStrReplace(measure, measureLen);
         }
         STableMeta *pTableMeta = smlGetMeta(info, measure, measureLen);
-        if(currElement->measureEscaped){
+        if (currElement->measureEscaped) {
           taosMemoryFree(measure);
         }
         if (pTableMeta == NULL) {
@@ -169,13 +231,30 @@ static int32_t smlParseTagKv(SSmlHandle *info, char **sql, char *sqlEnd, SSmlLin
           return TSDB_CODE_SUCCESS;
         }
         sMeta = smlBuildSTableMeta(info->dataFormat);
+        if(sMeta == NULL){
+          taosMemoryFreeClear(pTableMeta);
+          return TSDB_CODE_OUT_OF_MEMORY;
+        }
         sMeta->tableMeta = pTableMeta;
         taosHashPut(info->superTables, currElement->measure, currElement->measureLen, &sMeta, POINTER_BYTES);
-        for(int i = pTableMeta->tableInfo.numOfColumns; i < pTableMeta->tableInfo.numOfTags + pTableMeta->tableInfo.numOfColumns; i++){
-          SSchema *tag = pTableMeta->schema + i;
-          SSmlKv kv = {.key = tag->name, .keyLen = strlen(tag->name), .type = tag->type, .length = (tag->bytes - VARSTR_HEADER_SIZE) / TSDB_NCHAR_SIZE };
-          taosArrayPush(sMeta->tags, &kv);
+        for (int i = 1; i < pTableMeta->tableInfo.numOfTags + pTableMeta->tableInfo.numOfColumns; i++) {
+          SSchema *col = pTableMeta->schema + i;
+          SSmlKv   kv = {.key = col->name, .keyLen = strlen(col->name), .type = col->type};
+          if (col->type == TSDB_DATA_TYPE_NCHAR) {
+            kv.length = (col->bytes - VARSTR_HEADER_SIZE) / TSDB_NCHAR_SIZE;
+          } else if (col->type == TSDB_DATA_TYPE_BINARY || col->type == TSDB_DATA_TYPE_GEOMETRY || col->type == TSDB_DATA_TYPE_VARBINARY) {
+            kv.length = col->bytes - VARSTR_HEADER_SIZE;
+          } else{
+            kv.length = col->bytes;
+          }
+
+          if(i < pTableMeta->tableInfo.numOfColumns){
+            taosArrayPush(sMeta->cols, &kv);
+          }else{
+            taosArrayPush(sMeta->tags, &kv);
+          }
         }
+
         tmp = &sMeta;
       }
       info->currSTableMeta = (*tmp)->tableMeta;
@@ -195,7 +274,7 @@ static int32_t smlParseTagKv(SSmlHandle *info, char **sql, char *sqlEnd, SSmlLin
     bool        keyEscaped = false;
     size_t      keyLenEscaped = 0;
     while (*sql < sqlEnd) {
-      if (unlikely(IS_COMMA(*sql))) {
+      if (unlikely(IS_SPACE(*sql) || IS_COMMA(*sql))) {
         smlBuildInvalidDataMsg(&info->msgBuf, "invalid data", *sql);
         return TSDB_CODE_SML_INVALID_DATA;
       }
@@ -248,19 +327,25 @@ static int32_t smlParseTagKv(SSmlHandle *info, char **sql, char *sqlEnd, SSmlLin
       return TSDB_CODE_PAR_INVALID_VAR_COLUMN_LEN;
     }
 
-    if (keyEscaped){
-      char *tmp = (char*)taosMemoryMalloc(keyLen);
+    if (keyEscaped) {
+      char *tmp = (char *)taosMemoryMalloc(keyLen);
       memcpy(tmp, key, keyLen);
       PROCESS_SLASH_IN_TAG_FIELD_KEY(tmp, keyLen);
       key = tmp;
     }
-    if (valueEscaped){
-      char *tmp = (char*)taosMemoryMalloc(valueLen);
+    if (valueEscaped) {
+      char *tmp = (char *)taosMemoryMalloc(valueLen);
       memcpy(tmp, value, valueLen);
       PROCESS_SLASH_IN_TAG_FIELD_KEY(tmp, valueLen);
       value = tmp;
     }
-    SSmlKv kv = {.key = key, .keyLen = keyLen, .type = TSDB_DATA_TYPE_NCHAR, .value = value, .length = valueLen, .keyEscaped = keyEscaped, .valueEscaped = valueEscaped};
+    SSmlKv kv = {.key = key,
+                 .keyLen = keyLen,
+                 .type = TSDB_DATA_TYPE_NCHAR,
+                 .value = value,
+                 .length = valueLen,
+                 .keyEscaped = keyEscaped,
+                 .valueEscaped = valueEscaped};
     taosArrayPush(preLineKV, &kv);
     if (info->dataFormat) {
       if (unlikely(cnt + 1 > info->currSTableMeta->tableInfo.numOfTags)) {
@@ -305,10 +390,10 @@ static int32_t smlParseTagKv(SSmlHandle *info, char **sql, char *sqlEnd, SSmlLin
     return TSDB_CODE_OUT_OF_MEMORY;
   }
   tinfo->tags = taosArrayDup(preLineKV, NULL);
-  for(size_t i = 0; i < taosArrayGetSize(preLineKV); i++){
+  for (size_t i = 0; i < taosArrayGetSize(preLineKV); i++) {
     SSmlKv *kv = (SSmlKv *)taosArrayGet(preLineKV, i);
-    if(kv->keyEscaped)kv->key = NULL;
-    if(kv->valueEscaped)kv->value = NULL;
+    if (kv->keyEscaped) kv->key = NULL;
+    if (kv->valueEscaped) kv->value = NULL;
   }
 
   smlSetCTableName(tinfo);
@@ -317,7 +402,7 @@ static int32_t smlParseTagKv(SSmlHandle *info, char **sql, char *sqlEnd, SSmlLin
     info->currSTableMeta->uid = tinfo->uid;
     tinfo->tableDataCtx = smlInitTableDataCtx(info->pQuery, info->currSTableMeta);
     if (tinfo->tableDataCtx == NULL) {
-      smlDestroyTableInfo(info, tinfo);
+      smlDestroyTableInfo(&tinfo);
       smlBuildInvalidDataMsg(&info->msgBuf, "smlInitTableDataCtx error", NULL);
       return TSDB_CODE_SML_INVALID_DATA;
     }
@@ -330,7 +415,7 @@ static int32_t smlParseTagKv(SSmlHandle *info, char **sql, char *sqlEnd, SSmlLin
 
 static int32_t smlParseColKv(SSmlHandle *info, char **sql, char *sqlEnd, SSmlLineInfo *currElement, bool isSameMeasure,
                              bool isSameCTable) {
-  int     cnt = 0;
+  int cnt = 0;
   if (info->dataFormat) {
     if (unlikely(!isSameCTable)) {
       SSmlTableInfo **oneTable =
@@ -346,15 +431,16 @@ static int32_t smlParseColKv(SSmlHandle *info, char **sql, char *sqlEnd, SSmlLin
       SSmlSTableMeta **tmp =
           (SSmlSTableMeta **)taosHashGet(info->superTables, currElement->measure, currElement->measureLen);
       if (unlikely(tmp == NULL)) {
-        char* measure = currElement->measure;
+        char *measure = currElement->measure;
         int   measureLen = currElement->measureLen;
-        if(currElement->measureEscaped){
-          measure = (char*)taosMemoryMalloc(currElement->measureLen);
+        if (currElement->measureEscaped) {
+          measure = (char *)taosMemoryMalloc(currElement->measureLen);
           memcpy(measure, currElement->measure, currElement->measureLen);
           PROCESS_SLASH_IN_MEASUREMENT(measure, measureLen);
+          smlStrReplace(measure, measureLen);
         }
         STableMeta *pTableMeta = smlGetMeta(info, measure, measureLen);
-        if(currElement->measureEscaped){
+        if (currElement->measureEscaped) {
           taosMemoryFree(measure);
         }
         if (pTableMeta == NULL) {
@@ -363,22 +449,26 @@ static int32_t smlParseColKv(SSmlHandle *info, char **sql, char *sqlEnd, SSmlLin
           return TSDB_CODE_SUCCESS;
         }
         *tmp = smlBuildSTableMeta(info->dataFormat);
+        if(*tmp == NULL){
+          taosMemoryFreeClear(pTableMeta);
+          return TSDB_CODE_OUT_OF_MEMORY;
+        }
         (*tmp)->tableMeta = pTableMeta;
         taosHashPut(info->superTables, currElement->measure, currElement->measureLen, tmp, POINTER_BYTES);
 
-        for(int i = 0; i < pTableMeta->tableInfo.numOfColumns; i++){
+        for (int i = 0; i < pTableMeta->tableInfo.numOfColumns; i++) {
           SSchema *tag = pTableMeta->schema + i;
-          SSmlKv kv = {.key = tag->name, .keyLen = strlen(tag->name), .type = tag->type };
-          if(tag->type == TSDB_DATA_TYPE_NCHAR){
+          SSmlKv   kv = {.key = tag->name, .keyLen = strlen(tag->name), .type = tag->type};
+          if (tag->type == TSDB_DATA_TYPE_NCHAR) {
             kv.length = (tag->bytes - VARSTR_HEADER_SIZE) / TSDB_NCHAR_SIZE;
-          }else if(tag->type == TSDB_DATA_TYPE_BINARY){
+          } else if (tag->type == TSDB_DATA_TYPE_BINARY || tag->type == TSDB_DATA_TYPE_GEOMETRY || tag->type == TSDB_DATA_TYPE_VARBINARY) {
             kv.length = tag->bytes - VARSTR_HEADER_SIZE;
           }
           taosArrayPush((*tmp)->cols, &kv);
         }
       }
       info->currSTableMeta = (*tmp)->tableMeta;
-      info->masColKVs = (*tmp)->cols;
+      info->maxColKVs = (*tmp)->cols;
     }
   }
 
@@ -393,7 +483,7 @@ static int32_t smlParseColKv(SSmlHandle *info, char **sql, char *sqlEnd, SSmlLin
     bool        keyEscaped = false;
     size_t      keyLenEscaped = 0;
     while (*sql < sqlEnd) {
-      if (unlikely(IS_COMMA(*sql))) {
+      if (unlikely(IS_SPACE(*sql) || IS_COMMA(*sql))) {
         smlBuildInvalidDataMsg(&info->msgBuf, "invalid data", *sql);
         return TSDB_CODE_SML_INVALID_DATA;
       }
@@ -419,19 +509,20 @@ static int32_t smlParseColKv(SSmlHandle *info, char **sql, char *sqlEnd, SSmlLin
     size_t      valueLen = 0;
     bool        valueEscaped = false;
     size_t      valueLenEscaped = 0;
-    bool        isInQuote = false;
+    int         quoteNum = 0;
     const char *escapeChar = NULL;
     while (*sql < sqlEnd) {
       // parse value
       if (unlikely(*(*sql) == QUOTE && (*(*sql - 1) != SLASH || (*sql - 1) == escapeChar))) {
-        isInQuote = !isInQuote;
+        quoteNum++;
         (*sql)++;
-        continue;
-      }
-      if (!isInQuote) {
-        if (unlikely(IS_SPACE(*sql) || IS_COMMA(*sql))) {
+        if(quoteNum > 2){
           break;
         }
+        continue;
+      }
+      if (quoteNum % 2 == 0 && (unlikely(IS_SPACE(*sql) || IS_COMMA(*sql)))) {
+        break;
       }
       if (IS_SLASH_LETTER_IN_FIELD_VALUE(*sql) && (*sql - 1) != escapeChar) {
         escapeChar = *sql;
@@ -443,8 +534,8 @@ static int32_t smlParseColKv(SSmlHandle *info, char **sql, char *sqlEnd, SSmlLin
     }
     valueLen = *sql - value;
 
-    if (unlikely(isInQuote)) {
-      smlBuildInvalidDataMsg(&info->msgBuf, "only one quote", value);
+    if (unlikely(quoteNum != 0 && quoteNum != 2)) {
+      smlBuildInvalidDataMsg(&info->msgBuf, "unbalanced quotes", value);
       return TSDB_CODE_SML_INVALID_DATA;
     }
     if (unlikely(valueLen == 0)) {
@@ -459,18 +550,22 @@ static int32_t smlParseColKv(SSmlHandle *info, char **sql, char *sqlEnd, SSmlLin
       return ret;
     }
 
-    if (keyEscaped){
-      char *tmp = (char*)taosMemoryMalloc(kv.keyLen);
+    if (keyEscaped) {
+      char *tmp = (char *)taosMemoryMalloc(kv.keyLen);
       memcpy(tmp, key, kv.keyLen);
       PROCESS_SLASH_IN_TAG_FIELD_KEY(tmp, kv.keyLen);
       kv.key = tmp;
       kv.keyEscaped = keyEscaped;
     }
 
-    if (valueEscaped){
-      char *tmp = (char*)taosMemoryMalloc(kv.length);
+    if (valueEscaped) {
+      char *tmp = (char *)taosMemoryMalloc(kv.length);
       memcpy(tmp, kv.value, kv.length);
       PROCESS_SLASH_IN_FIELD_VALUE(tmp, kv.length);
+      ASSERT(kv.type != TSDB_DATA_TYPE_GEOMETRY);
+      if(kv.type == TSDB_DATA_TYPE_VARBINARY){
+        taosMemoryFree((void*)kv.value);
+      }
       kv.value = tmp;
       kv.valueEscaped = valueEscaped;
     }
@@ -492,13 +587,13 @@ static int32_t smlParseColKv(SSmlHandle *info, char **sql, char *sqlEnd, SSmlLin
         freeSSmlKv(&kv);
         return TSDB_CODE_SUCCESS;
       }
-      if (cnt >= taosArrayGetSize(info->masColKVs)) {
+      if (cnt >= taosArrayGetSize(info->maxColKVs)) {
         info->dataFormat = false;
         info->reRun = true;
         freeSSmlKv(&kv);
         return TSDB_CODE_SUCCESS;
       }
-      SSmlKv *maxKV = (SSmlKv *)taosArrayGet(info->masColKVs, cnt);
+      SSmlKv *maxKV = (SSmlKv *)taosArrayGet(info->maxColKVs, cnt);
       if (kv.type != maxKV->type) {
         info->dataFormat = false;
         info->reRun = true;
@@ -633,8 +728,8 @@ int32_t smlParseInfluxString(SSmlHandle *info, char *sql, char *sqlEnd, SSmlLine
     return TSDB_CODE_INVALID_TIMESTAMP;
   }
   // add ts to
-  SSmlKv kv = {.key = TS,
-               .keyLen = TS_LEN,
+  SSmlKv kv = {.key = tsSmlTsDefaultName,
+               .keyLen = strlen(tsSmlTsDefaultName),
                .type = TSDB_DATA_TYPE_TIMESTAMP,
                .i = ts,
                .length = (size_t)tDataTypes[TSDB_DATA_TYPE_TIMESTAMP].bytes,
@@ -643,10 +738,15 @@ int32_t smlParseInfluxString(SSmlHandle *info, char *sql, char *sqlEnd, SSmlLine
   if (info->dataFormat) {
     uDebug("SML:0x%" PRIx64 " smlParseInfluxString format true, ts:%" PRId64, info->id, ts);
     ret = smlBuildCol(info->currTableDataCtx, info->currSTableMeta->schema, &kv, 0);
-    if(ret != TSDB_CODE_SUCCESS){return ret;}
-    ret = smlBuildRow(info->currTableDataCtx);
-    if(ret != TSDB_CODE_SUCCESS){return ret;}
-    clearColValArray(info->currTableDataCtx->pValues);
+    if (ret == TSDB_CODE_SUCCESS) {
+      ret = smlBuildRow(info->currTableDataCtx);
+    }
+
+    clearColValArraySml(info->currTableDataCtx->pValues);
+    if (unlikely(ret != TSDB_CODE_SUCCESS)) {
+      smlBuildInvalidDataMsg(&info->msgBuf, "smlBuildCol error", NULL);
+      return ret;
+    }
   } else {
     uDebug("SML:0x%" PRIx64 " smlParseInfluxString format false, ts:%" PRId64, info->id, ts);
     taosArraySet(elements->colArray, 0, &kv);

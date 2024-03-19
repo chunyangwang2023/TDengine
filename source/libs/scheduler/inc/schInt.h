@@ -57,7 +57,7 @@ typedef enum {
 #define SCHEDULE_DEFAULT_POLICY             SCH_LOAD_SEQ
 #define SCHEDULE_DEFAULT_MAX_NODE_NUM       20
 
-#define SCH_DEFAULT_TASK_TIMEOUT_USEC 60000000
+#define SCH_DEFAULT_TASK_TIMEOUT_USEC 30000000
 #define SCH_MAX_TASK_TIMEOUT_USEC     300000000
 #define SCH_DEFAULT_MAX_RETRY_NUM     6
 #define SCH_MIN_AYSNC_EXEC_NUM        3
@@ -239,7 +239,7 @@ typedef struct SSchTask {
   int32_t         lastMsgType;     // last sent msg type
   int64_t         timeoutUsec;     // task timeout useconds before reschedule
   SQueryNodeAddr  succeedAddr;     // task executed success node address
-  int8_t          candidateIdx;    // current try condidation index
+  int32_t         candidateIdx;    // current try condidation index
   SArray         *candidateAddrs;  // condidate node addresses, element is SQueryNodeAddr
   SHashObj       *execNodes;       // all tried node for current task, element is SSchNodeInfo
   SSchTaskProfile profile;         // task execution profile
@@ -531,7 +531,7 @@ void     schDeregisterTaskHb(SSchJob *pJob, SSchTask *pTask);
 void     schCleanClusterHb(void *pTrans);
 int32_t  schLaunchTask(SSchJob *job, SSchTask *task);
 int32_t  schDelayLaunchTask(SSchJob *pJob, SSchTask *pTask);
-int32_t  schBuildAndSendMsg(SSchJob *job, SSchTask *task, SQueryNodeAddr *addr, int32_t msgType);
+int32_t  schBuildAndSendMsg(SSchJob *job, SSchTask *task, SQueryNodeAddr *addr, int32_t msgType, void* param);
 SSchJob *schAcquireJob(int64_t refId);
 int32_t  schReleaseJob(int64_t refId);
 void     schFreeFlowCtrl(SSchJob *pJob);
@@ -598,6 +598,7 @@ int32_t  schProcessOnJobFailure(SSchJob *pJob, int32_t errCode);
 int32_t  schProcessOnJobPartialSuccess(SSchJob *pJob);
 void     schFreeTask(SSchJob *pJob, SSchTask *pTask);
 void     schDropTaskInHashList(SSchJob *pJob, SHashObj *list);
+int32_t  schNotifyTaskInHashList(SSchJob *pJob, SHashObj *list, ETaskNotifyType type, SSchTask *pTask);
 int32_t  schLaunchLevelTasks(SSchJob *pJob, SSchLevel *level);
 int32_t  schGetTaskFromList(SHashObj *pTaskList, uint64_t taskId, SSchTask **pTask);
 int32_t  schInitTask(SSchJob *pJob, SSchTask *pTask, SSubplan *pPlan, SSchLevel *pLevel);
@@ -612,6 +613,7 @@ int32_t  schHandleJobRetry(SSchJob *pJob, SSchTask *pTask, SDataBuf *pMsg, int32
 int32_t  schChkResetJobRetry(SSchJob *pJob, int32_t rspCode);
 void     schResetTaskForRetry(SSchJob *pJob, SSchTask *pTask);
 int32_t  schChkUpdateRedirectCtx(SSchJob *pJob, SSchTask *pTask, SEpSet *pEpSet, int32_t rspCode);
+int32_t  schNotifyJobAllTasks(SSchJob *pJob, SSchTask *pTask, ETaskNotifyType type);
 
 extern SSchDebug gSCHDebug;
 

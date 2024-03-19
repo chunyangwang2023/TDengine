@@ -36,9 +36,14 @@ extern "C" {
 #define SHOW_CREATE_TB_RESULT_FIELD1_LEN (TSDB_TABLE_NAME_LEN + VARSTR_HEADER_SIZE)
 #define SHOW_CREATE_TB_RESULT_FIELD2_LEN (TSDB_MAX_ALLOWED_SQL_LEN * 3)
 
-#define SHOW_LOCAL_VARIABLES_RESULT_COLS       2
+#define SHOW_LOCAL_VARIABLES_RESULT_COLS       3
 #define SHOW_LOCAL_VARIABLES_RESULT_FIELD1_LEN (TSDB_CONFIG_OPTION_LEN + VARSTR_HEADER_SIZE)
 #define SHOW_LOCAL_VARIABLES_RESULT_FIELD2_LEN (TSDB_CONFIG_VALUE_LEN + VARSTR_HEADER_SIZE)
+#define SHOW_LOCAL_VARIABLES_RESULT_FIELD3_LEN (TSDB_CONFIG_SCOPE_LEN + VARSTR_HEADER_SIZE)
+
+#define COMPACT_DB_RESULT_COLS       3
+#define COMPACT_DB_RESULT_FIELD1_LEN 32
+#define COMPACT_DB_RESULT_FIELD3_LEN 128
 
 #define SHOW_ALIVE_RESULT_COLS 1
 
@@ -249,6 +254,7 @@ typedef struct SDropDnodeStmt {
   char      fqdn[TSDB_FQDN_LEN];
   int32_t   port;
   bool      force;
+  bool      unsafe;
 } SDropDnodeStmt;
 
 typedef struct SAlterDnodeStmt {
@@ -310,6 +316,15 @@ typedef struct SShowTableTagsStmt {
   SNodeList* pTags;
 } SShowTableTagsStmt;
 
+typedef struct SShowCompactsStmt {
+  ENodeType type;
+} SShowCompactsStmt;
+
+typedef struct SShowCompactDetailsStmt {
+  ENodeType type;
+  SNode*    pCompactId;
+} SShowCompactDetailsStmt;
+
 typedef enum EIndexType { INDEX_TYPE_SMA = 1, INDEX_TYPE_FULLTEXT, INDEX_TYPE_NORMAL } EIndexType;
 
 typedef struct SIndexOptions {
@@ -318,19 +333,22 @@ typedef struct SIndexOptions {
   SNode*     pInterval;
   SNode*     pOffset;
   SNode*     pSliding;
+  int8_t     tsPrecision;
   SNode*     pStreamOptions;
 } SIndexOptions;
 
 typedef struct SCreateIndexStmt {
-  ENodeType      type;
-  EIndexType     indexType;
-  bool           ignoreExists;
-  char           indexDbName[TSDB_DB_NAME_LEN];
-  char           indexName[TSDB_INDEX_NAME_LEN];
-  char           dbName[TSDB_DB_NAME_LEN];
-  char           tableName[TSDB_TABLE_NAME_LEN];
-  SNodeList*     pCols;
-  SIndexOptions* pOptions;
+  ENodeType       type;
+  EIndexType      indexType;
+  bool            ignoreExists;
+  char            indexDbName[TSDB_DB_NAME_LEN];
+  char            indexName[TSDB_INDEX_NAME_LEN];
+  char            dbName[TSDB_DB_NAME_LEN];
+  char            tableName[TSDB_TABLE_NAME_LEN];
+  SNodeList*      pCols;
+  SIndexOptions*  pOptions;
+  SNode*          pPrevQuery;
+  SMCreateSmaReq* pReq;
 } SCreateIndexStmt;
 
 typedef struct SDropIndexStmt {
@@ -350,25 +368,31 @@ typedef struct SDropComponentNodeStmt {
   int32_t   dnodeId;
 } SDropComponentNodeStmt;
 
+typedef struct SRestoreComponentNodeStmt {
+  ENodeType type;
+  int32_t   dnodeId;
+} SRestoreComponentNodeStmt;
+
 typedef struct SCreateTopicStmt {
   ENodeType type;
-  char      topicName[TSDB_TABLE_NAME_LEN];
+  char      topicName[TSDB_TOPIC_NAME_LEN];
   char      subDbName[TSDB_DB_NAME_LEN];
   char      subSTbName[TSDB_TABLE_NAME_LEN];
   bool      ignoreExists;
-  bool      withMeta;
+  int8_t    withMeta;
   SNode*    pQuery;
+  SNode*    pWhere;
 } SCreateTopicStmt;
 
 typedef struct SDropTopicStmt {
   ENodeType type;
-  char      topicName[TSDB_TABLE_NAME_LEN];
+  char      topicName[TSDB_TOPIC_NAME_LEN];
   bool      ignoreNotExists;
 } SDropTopicStmt;
 
 typedef struct SDropCGroupStmt {
   ENodeType type;
-  char      topicName[TSDB_TABLE_NAME_LEN];
+  char      topicName[TSDB_TOPIC_NAME_LEN];
   char      cgroup[TSDB_CGROUP_LEN];
   bool      ignoreNotExists;
 } SDropCGroupStmt;
@@ -418,16 +442,18 @@ typedef struct SStreamOptions {
 } SStreamOptions;
 
 typedef struct SCreateStreamStmt {
-  ENodeType       type;
-  char            streamName[TSDB_TABLE_NAME_LEN];
-  char            targetDbName[TSDB_DB_NAME_LEN];
-  char            targetTabName[TSDB_TABLE_NAME_LEN];
-  bool            ignoreExists;
-  SStreamOptions* pOptions;
-  SNode*          pQuery;
-  SNodeList*      pTags;
-  SNode*          pSubtable;
-  SNodeList*      pCols;
+  ENodeType           type;
+  char                streamName[TSDB_TABLE_NAME_LEN];
+  char                targetDbName[TSDB_DB_NAME_LEN];
+  char                targetTabName[TSDB_TABLE_NAME_LEN];
+  bool                ignoreExists;
+  SStreamOptions*     pOptions;
+  SNode*              pQuery;
+  SNode*              pPrevQuery;
+  SNodeList*          pTags;
+  SNode*              pSubtable;
+  SNodeList*          pCols;
+  SCMCreateStreamReq* pReq;
 } SCreateStreamStmt;
 
 typedef struct SDropStreamStmt {
@@ -435,6 +461,19 @@ typedef struct SDropStreamStmt {
   char      streamName[TSDB_TABLE_NAME_LEN];
   bool      ignoreNotExists;
 } SDropStreamStmt;
+
+typedef struct SPauseStreamStmt {
+  ENodeType type;
+  char      streamName[TSDB_TABLE_NAME_LEN];
+  bool      ignoreNotExists;
+} SPauseStreamStmt;
+
+typedef struct SResumeStreamStmt {
+  ENodeType type;
+  char      streamName[TSDB_TABLE_NAME_LEN];
+  bool      ignoreNotExists;
+  bool      ignoreUntreated;
+} SResumeStreamStmt;
 
 typedef struct SCreateFunctionStmt {
   ENodeType type;
@@ -471,6 +510,7 @@ typedef struct SBalanceVgroupStmt {
 
 typedef struct SBalanceVgroupLeaderStmt {
   ENodeType type;
+  int32_t   vgId;
 } SBalanceVgroupLeaderStmt;
 
 typedef struct SMergeVgroupStmt {

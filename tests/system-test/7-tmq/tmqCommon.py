@@ -37,14 +37,17 @@ from util.common import *
 #     INSERT_DATA     = 3
 
 class TMQCom:
+    def __init__(self):
+        self.g_end_insert_flag = 0
+    
     def init(self, conn, logSql, replicaVar=1):
         self.replicaVar = int(replicaVar)
         tdSql.init(conn.cursor())
         # tdSql.init(conn.cursor(), logSql)  # output sql.txt file
 
-    def initConsumerTable(self,cdbName='cdb'):
+    def initConsumerTable(self,cdbName='cdb', replicaVar=1):
         tdLog.info("create consume database, and consume info table, and consume result table")
-        tdSql.query("create database if not exists %s vgroups 1"%(cdbName))
+        tdSql.query("create database if not exists %s vgroups 1 replica %d"%(cdbName,replicaVar))
         tdSql.query("drop table if exists %s.consumeinfo "%(cdbName))
         tdSql.query("drop table if exists %s.consumeresult "%(cdbName))
         tdSql.query("drop table if exists %s.notifyinfo "%(cdbName))
@@ -62,17 +65,23 @@ class TMQCom:
         sql = "insert into %s.consumeinfo values "%cdbName
         sql += "(now + %ds, %d, '%s', '%s', %d, %d, %d)"%(consumerId, consumerId, topicList, keyList, expectrowcnt, ifcheckdata, ifmanualcommit)
         tdLog.info("consume info sql: %s"%sql)
-        tdSql.query(sql)
+        tdSql.execute(sql)
 
-    def selectConsumeResult(self,expectRows,cdbName='cdb'):
+    def selectConsumeResult(self,expectRows,cdbName='cdb',count=120):
         resultList=[]
-        while 1:
+        count_init = 0
+        while True:
             tdSql.query("select * from %s.consumeresult"%cdbName)
             #tdLog.info("row: %d, %l64d, %l64d"%(tdSql.getData(0, 1),tdSql.getData(0, 2),tdSql.getData(0, 3))
             if tdSql.getRows() == expectRows:
                 break
             else:
-                time.sleep(5)
+                time.sleep(1)
+                count_init += 1
+                if count_init == count:
+                    
+                    tdLog.exit(f"{tdSql.getRows()},{expectRows},{tdSql.queryResult}")                   
+            
 
         for i in range(expectRows):
             tdLog.info ("consume id: %d, consume msgs: %d, consume rows: %d"%(tdSql.getData(i , 1), tdSql.getData(i , 2), tdSql.getData(i , 3)))
@@ -153,7 +162,7 @@ class TMQCom:
             tdLog.info("row: %d"%(actRows))
             if (actRows >= rows):
                     loopFlag = 0
-            time.sleep(0.02)
+            time.sleep(0.5)
         return
 
     def getStartCommitNotifyFromTmqsim(self,cdbName='cdb',rows=1):
@@ -164,7 +173,7 @@ class TMQCom:
             tdLog.info("row: %d"%(actRows))
             if (actRows >= rows):
                 loopFlag = 0
-            time.sleep(0.02)
+            time.sleep(0.5)
         return
 
     def create_database(self,tsql, dbName,dropFlag=1,vgroups=4,replica=1):
@@ -230,7 +239,7 @@ class TMQCom:
         #tdLog.debug("doing insert data into stable:%s rows:%d ..."%(stbName, allRows))
         for i in range(ctbNum):
             rowsBatched = 0
-            sql += " %s%d values "%(stbName,i)
+            sql += " %s.%s%d values "%(dbName, stbName, i)
             for j in range(rowsPerTbl):
                 sql += "(%d, %d, 'tmqrow_%d') "%(startTs + j, j, j)
                 rowsBatched += 1
@@ -238,7 +247,7 @@ class TMQCom:
                     tsql.execute(sql)
                     rowsBatched = 0
                     if j < rowsPerTbl - 1:
-                        sql = "insert into %s%d values " %(stbName,i)
+                        sql = "insert into %s.%s%d values " %(dbName, stbName,i)
                     else:
                         sql = "insert into "
         #end sql
@@ -260,7 +269,7 @@ class TMQCom:
         #tdLog.debug("doing insert data into stable:%s rows:%d ..."%(stbName, allRows))
         for i in range(ctbNum):
             rowsBatched = 0
-            sql += " %s%d values "%(ctbPrefix,i)
+            sql += " %s.%s%d values "%(dbName, ctbPrefix,i)
             for j in range(rowsPerTbl):
                 if (j % 2 == 0):
                     sql += "(%d, %d, %d, 'tmqrow_%d') "%(startTs + j, j, j, j)
@@ -271,7 +280,7 @@ class TMQCom:
                     tsql.execute(sql)
                     rowsBatched = 0
                     if j < rowsPerTbl - 1:
-                        sql = "insert into %s%d values " %(ctbPrefix,i)
+                        sql = "insert into %s.%s%d values " %(dbName, ctbPrefix, i)
                     else:
                         sql = "insert into "
         #end sql
@@ -293,7 +302,7 @@ class TMQCom:
         #tdLog.debug("doing insert data into stable:%s rows:%d ..."%(stbName, allRows))
         for i in range(ctbNum):
             rowsBatched = 0
-            sql += " %s%d values "%(ctbPrefix,i+ctbStartIdx)
+            sql += " %s.%s%d values "%(dbName, ctbPrefix, i+ctbStartIdx)
             for j in range(rowsPerTbl):
                 if (j % 2 == 0):
                     sql += "(%d, %d, %d, 'tmqrow_%d', now) "%(startTs + j, j, j, j)
@@ -304,7 +313,7 @@ class TMQCom:
                     tsql.execute(sql)
                     rowsBatched = 0
                     if j < rowsPerTbl - 1:
-                        sql = "insert into %s%d values " %(ctbPrefix,i+ctbStartIdx)
+                        sql = "insert into %s.%s%d values " %(dbName, ctbPrefix, i+ctbStartIdx)
                     else:
                         sql = "insert into "
         #end sql
@@ -330,8 +339,11 @@ class TMQCom:
             ctbDict[i] = 0
 
         #tdLog.debug("doing insert data into stable:%s rows:%d ..."%(stbName, allRows))
-        rowsOfCtb = 0
+        rowsOfCtb = 0        
         while rowsOfCtb < rowsPerTbl:
+            if (0 != self.g_end_insert_flag):
+                tdLog.debug("get signal to stop insert data")
+                break
             for i in range(ctbNum):
                 sql += " %s.%s%d values "%(dbName,ctbPrefix,i+ctbStartIdx)
                 rowsBatched = 0
@@ -473,7 +485,7 @@ class TMQCom:
                 tdLog.exit("consumerId %d consume rows len is not match the rows by direct query,len(dstSplit):%d != len(srcSplit):%d, dst:%s, src:%s"
                            %(consumerId, len(dstSplit), len(srcSplit), dst, src))
 
-            for i in range(len(dstSplit)):
+            for i in range(1,len(dstSplit)):
                 if srcSplit[i] != dstSplit[i]:
                     srcFloat = float(srcSplit[i])
                     dstFloat = float(dstSplit[i])
@@ -570,6 +582,42 @@ class TMQCom:
         tdLog.info("show subscriptions:")
         tdLog.info(tsql.queryResult)
         tdLog.info("wait subscriptions exit for %d s"%wait_cnt)
+
+    def killProcesser(self, processerName):
+        if platform.system().lower() == 'windows':
+            killCmd = ("wmic process where name=\"%s.exe\" call terminate > NUL 2>&1" % processerName)
+            psCmd = ("wmic process where name=\"%s.exe\" | findstr \"%s.exe\"" % (processerName, processerName))
+        else:
+            killCmd = (
+                "ps -ef|grep -w %s| grep -v grep | awk '{print $2}' | xargs kill -TERM > /dev/null 2>&1"
+                % processerName
+            )
+            psCmd = ("ps -ef|grep -w %s| grep -v grep | awk '{print $2}'" % processerName)
+
+        processID = ""
+        
+        try: 
+            processID = subprocess.check_output(psCmd, shell=True)
+        except Exception as err:
+            processID = ""
+            print('**** warn: ', err)        
+        
+        while processID:
+            os.system(killCmd)
+            time.sleep(1)
+            try: 
+                processID = subprocess.check_output(psCmd, shell=True)
+            except Exception as err:
+                processID = ""
+                print('**** warn: ', err)
+                
+    def startProcess(self, processName, param):
+        if platform.system().lower() == 'windows':
+            cmd = f"mintty -h never %s %s > NUL 2>&1" % (processName, param)
+        else:
+            cmd = f"nohup %s %s > /dev/null 2>&1 &" % (processName, param)
+        tdLog.info("%s"%(cmd))
+        os.system(cmd)                
 
     def close(self):
         self.cursor.close()

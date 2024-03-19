@@ -67,6 +67,8 @@ extern "C" {
 #define EXPLAIN_EVENT_FORMAT "Event"
 #define EXPLAIN_EVENT_START_FORMAT "Start Cond: "
 #define EXPLAIN_EVENT_END_FORMAT "End Cond: "
+#define EXPLAIN_GROUP_CACHE_FORMAT "Group Cache"
+#define EXPLAIN_DYN_QRY_CTRL_FORMAT "Dynamic Query Control for %s"
 
 #define EXPLAIN_PLANNING_TIME_FORMAT "Planning Time: %.3f ms"
 #define EXPLAIN_EXEC_TIME_FORMAT "Execution Time: %.3f ms"
@@ -96,6 +98,12 @@ extern "C" {
 #define EXPLAIN_OFFSET_FORMAT "offset=%" PRId64
 #define EXPLAIN_SOFFSET_FORMAT "soffset=%" PRId64
 #define EXPLAIN_PARTITIONS_FORMAT "partitions=%d"
+#define EXPLAIN_GLOBAL_GROUP_FORMAT "global_group=%d"
+#define EXPLAIN_GROUP_BY_UID_FORMAT "group_by_uid=%d"
+#define EXPLAIN_BATCH_SCAN_FORMAT "batch_scan=%d"
+#define EXPLAIN_VGROUP_SLOT_FORMAT "vgroup_slot=%d,%d"
+#define EXPLAIN_UID_SLOT_FORMAT "uid_slot=%d,%d"
+#define EXPLAIN_SRC_SCAN_FORMAT "src_scan=%d,%d"
 
 #define COMMAND_RESET_LOG "resetLog"
 #define COMMAND_SCHEDULE_POLICY "schedulePolicy"
@@ -103,6 +111,7 @@ extern "C" {
 #define COMMAND_CATALOG_DEBUG "catalogDebug"
 #define COMMAND_ENABLE_MEM_DEBUG "enableMemDebug"
 #define COMMAND_DISABLE_MEM_DEBUG "disableMemDebug"
+#define COMMAND_ASYNCLOG          "asynclog"
 
 typedef struct SExplainGroup {
   int32_t   nodeNum;
@@ -145,7 +154,7 @@ typedef struct SExplainCtx {
   SHashObj    *groupHash;     // Hash<SExplainGroup>
 } SExplainCtx;
 
-#define EXPLAIN_ORDER_STRING(_order) ((ORDER_ASC == _order) ? "asc" : "desc")
+#define EXPLAIN_ORDER_STRING(_order) ((ORDER_ASC == _order) ? "asc" : ORDER_DESC == _order ? "desc" : "unknown")
 #define EXPLAIN_JOIN_STRING(_type) ((JOIN_TYPE_INNER == _type) ? "Inner join" : "Join")
 
 #define INVERAL_TIME_FROM_PRECISION_TO_UNIT(_t, _u, _p) (((_u) == 'n' || (_u) == 'y') ? (_t) : (convertTimeFromPrecisionToUnit(_t, _p, _u)))
@@ -159,7 +168,7 @@ typedef struct SExplainCtx {
     }                                                                                                             \
     tlen += snprintf(tbuf + VARSTR_HEADER_SIZE + tlen, TSDB_EXPLAIN_RESULT_ROW_SIZE - VARSTR_HEADER_SIZE - tlen, __VA_ARGS__);         \
   } while (0)
-  
+
 #define EXPLAIN_ROW_APPEND(...) tlen += snprintf(tbuf + VARSTR_HEADER_SIZE + tlen, TSDB_EXPLAIN_RESULT_ROW_SIZE - VARSTR_HEADER_SIZE - tlen, __VA_ARGS__)
 #define EXPLAIN_ROW_END() do { varDataSetLen(tbuf, tlen); tlen += VARSTR_HEADER_SIZE; isVerboseLine = true; } while (0)
 

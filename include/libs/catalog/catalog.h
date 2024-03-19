@@ -87,6 +87,7 @@ typedef struct SCatalogReq {
   bool    dNodeRequired;  // valid dnode
   bool    svrVerRequired;
   bool    forceUpdate;
+  bool    cloned;
 } SCatalogReq;
 
 typedef struct SMetaRes {
@@ -214,7 +215,7 @@ int32_t catalogGetSTableMeta(SCatalog* pCatalog, SRequestConnInfo* pConn, const 
 
 int32_t catalogUpdateTableMeta(SCatalog* pCatalog, STableMetaRsp* rspMsg);
 
-int32_t catalogUpdateTableMeta(SCatalog* pCatalog, STableMetaRsp* rspMsg);
+int32_t catalogAsyncUpdateTableMeta(SCatalog* pCtg, STableMetaRsp* pMsg);
 
 int32_t catalogGetCachedTableMeta(SCatalog* pCtg, const SName* pTableName, STableMeta** pTableMeta);
 

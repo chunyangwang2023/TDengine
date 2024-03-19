@@ -158,7 +158,6 @@ function install_bin() {
   ${csudo}rm -f ${bin_link_dir}/udfd || :
   ${csudo}rm -f ${bin_link_dir}/taosdemo || :
   ${csudo}rm -f ${bin_link_dir}/taosdump || :
-  ${csudo}rm -f ${bin_link_dir}/taosx || :
   ${csudo}rm -f ${bin_link_dir}/${uninstallScript} || :
 
   if [ "$osType" != "Darwin" ]; then
@@ -241,10 +240,10 @@ function install_jemalloc() {
       ${csudo}/usr/bin/install -c -m 755 ${binary_dir}/build/lib/libjemalloc.so.2 /usr/local/lib
       ${csudo}ln -sf libjemalloc.so.2 /usr/local/lib/libjemalloc.so > /dev/null 2>&1
       ${csudo}/usr/bin/install -c -d /usr/local/lib
-      [ -f ${binary_dir}/build/lib/libjemalloc.a ] &&
-        ${csudo}/usr/bin/install -c -m 755 ${binary_dir}/build/lib/libjemalloc.a /usr/local/lib
-      [ -f ${binary_dir}/build/lib/libjemalloc_pic.a ] &&
-        ${csudo}/usr/bin/install -c -m 755 ${binary_dir}/build/lib/libjemalloc_pic.a /usr/local/lib
+      # [ -f ${binary_dir}/build/lib/libjemalloc.a ] &&
+      #   ${csudo}/usr/bin/install -c -m 755 ${binary_dir}/build/lib/libjemalloc.a /usr/local/lib
+      # [ -f ${binary_dir}/build/lib/libjemalloc_pic.a ] &&
+      #   ${csudo}/usr/bin/install -c -m 755 ${binary_dir}/build/lib/libjemalloc_pic.a /usr/local/lib
       if [ -f "${binary_dir}/build/lib/pkgconfig/jemalloc.pc" ]; then
         ${csudo}/usr/bin/install -c -d /usr/local/lib/pkgconfig
         ${csudo}/usr/bin/install -c -m 644 ${binary_dir}/build/lib/pkgconfig/jemalloc.pc \
@@ -348,9 +347,9 @@ function install_lib() {
 
 function install_header() {
   ${csudo}mkdir -p ${inc_link_dir}
-  ${csudo}rm -f ${inc_link_dir}/taos.h ${inc_link_dir}/taosdef.h ${inc_link_dir}/taoserror.h ${inc_link_dir}/taosudf.h || :
+  ${csudo}rm -f ${inc_link_dir}/taos.h ${inc_link_dir}/taosdef.h ${inc_link_dir}/taoserror.h ${inc_link_dir}/tdef.h ${inc_link_dir}/taosudf.h || :
   [ -f ${inc_link_dir}/taosws.h ] && ${csudo}rm -f ${inc_link_dir}/taosws.h ||:
-  ${csudo}cp -f ${source_dir}/include/client/taos.h ${source_dir}/include/common/taosdef.h ${source_dir}/include/util/taoserror.h ${source_dir}/include/libs/function/taosudf.h \
+  ${csudo}cp -f ${source_dir}/include/client/taos.h ${source_dir}/include/common/taosdef.h ${source_dir}/include/util/taoserror.h ${source_dir}/include/util/tdef.h ${source_dir}/include/libs/function/taosudf.h \
     ${install_main_dir}/include && ${csudo}chmod 644 ${install_main_dir}/include/*
 
   if [ -f ${binary_dir}/build/include/taosws.h ]; then
@@ -361,6 +360,7 @@ function install_header() {
   ${csudo}ln -s ${install_main_dir}/include/taos.h ${inc_link_dir}/taos.h > /dev/null 2>&1
   ${csudo}ln -s ${install_main_dir}/include/taosdef.h ${inc_link_dir}/taosdef.h > /dev/null 2>&1
   ${csudo}ln -s ${install_main_dir}/include/taoserror.h ${inc_link_dir}/taoserror.h > /dev/null 2>&1
+  ${csudo}ln -s ${install_main_dir}/include/tdef.h ${inc_link_dir}/tdef.h > /dev/null 2>&1
   ${csudo}ln -s ${install_main_dir}/include/taosudf.h ${inc_link_dir}/taosudf.h > /dev/null 2>&1
 
   ${csudo}chmod 644 ${install_main_dir}/include/*
@@ -408,7 +408,6 @@ function install_taosadapter_config() {
 }
 
 function install_log() {
-  ${csudo}rm -rf ${log_dir} || :
   ${csudo}mkdir -p ${log_dir} && ${csudo}chmod 777 ${log_dir}
   ${csudo}ln -s ${log_dir} ${install_main_dir}/log > /dev/null 2>&1
 }
@@ -430,12 +429,6 @@ function install_connector() {
 
 function install_examples() {
   ${csudo}cp -rf ${source_dir}/examples/* ${install_main_dir}/examples || :
-}
-
-function install_web() {
-  if [ -d "${binary_dir}/build/share" ]; then
-    ${csudo}cp -rf ${binary_dir}/build/share/* ${install_main_dir}/share || :
-  fi
 }
 
 function clean_service_on_sysvinit() {
@@ -592,7 +585,6 @@ function update_TDengine() {
   install_lib
   #  install_connector
   install_examples
-  install_web
   install_bin
   install_app
 

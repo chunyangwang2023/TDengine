@@ -107,7 +107,7 @@ if __name__ == "__main__":
     restful = False
     replicaVar = 1
     asan = False
-    independentMnode = True
+    independentMnode = False
     previousCluster = False
     opts, args = getopt.gnu_getopt(sys.argv[1:], 'f:p:m:l:scghrd:k:e:N:M:Q:C:RD:n:i:aP', [
         'file=', 'path=', 'master', 'logSql', 'stop', 'cluster', 'valgrind', 'help', 'restart', 'updateCfgDict', 'killv', 'execCmd','dnodeNums','mnodeNums','queryPolicy','createDnodeNums','restful','adaptercfgupdate','replicaVar','independentMnode','previous'])
@@ -177,7 +177,7 @@ if __name__ == "__main__":
                 sys.exit(0)
 
         if key in ['-k', '--killValgrind']:
-            killValgrind = 0
+            killValgrind = 1
 
         if key in ['-e', '--execCmd']:
             try:
@@ -553,6 +553,7 @@ if __name__ == "__main__":
         else :
             # dnode > 1 cluster
             tdLog.debug("create an cluster  with %s nodes and make %s dnode as independent mnode"%(dnodeNums,mnodeNums))
+            print(independentMnode,"independentMnode valuse")
             dnodeslist = cluster.configure_cluster(dnodeNums=dnodeNums, mnodeNums=mnodeNums, independentMnode=independentMnode)
             tdDnodes = ClusterDnodes(dnodeslist)
             tdDnodes.init(deployPath, masterIp)

@@ -30,6 +30,7 @@ IF (TD_LINUX_64 AND JEMALLOC_ENABLED)
     ADD_DEPENDENCIES(function jemalloc)
 ENDIF ()
 
+if (NOT ${TD_BUILD_MC})
 target_link_libraries(
     function
     PRIVATE os 
@@ -39,8 +40,22 @@ target_link_libraries(
     PRIVATE qcom 
     PRIVATE scalar 
     PRIVATE transport 
-    PRIVATE stream ${LINK_JEMALLOC}
+    # PRIVATE stream ${LINK_JEMALLOC}
 )
+else ()
+target_link_libraries(
+    function
+    PRIVATE os 
+    PRIVATE util 
+    PRIVATE common 
+    PRIVATE nodes 
+    PRIVATE qcom 
+    PRIVATE scalar 
+    PRIVATE geometry 
+    PRIVATE transport 
+    PUBLIC uv_a
+)
+endif ()
 
 if(NOT ${TD_BUILD_MC})
 target_link_libraries(function PUBLIC uv_a)

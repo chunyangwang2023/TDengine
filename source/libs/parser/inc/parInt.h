@@ -37,6 +37,8 @@ int32_t calculateConstant(SParseContext* pParseCxt, SQuery* pQuery);
 int32_t mcCheckQuery(SParseContext* pParseCxt, SQuery* pQuery);
 int32_t mcCheckCol(int32_t type);
 int32_t mcCheckDbTable(const char* db, const char *table);
+int32_t translatePostCreateStream(SParseContext* pParseCxt, SQuery* pQuery, void** pResRow);
+int32_t translatePostCreateSmaIndex(SParseContext* pParseCxt, SQuery* pQuery, void** pResRow);
 
 #ifdef __cplusplus
 }

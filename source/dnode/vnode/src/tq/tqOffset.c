@@ -104,7 +104,7 @@ STqOffsetStore* tqOffsetOpen(STQ* pTq) {
   pStore->needCommit = 0;
   pTq->pOffsetStore = pStore;
 
-  pStore->pHash = taosHashInit(64, MurmurHash3_32, true, HASH_NO_LOCK);
+  pStore->pHash = taosHashInit(64, MurmurHash3_32, true, HASH_ENTRY_LOCK);
   if (pStore->pHash == NULL) {
     taosMemoryFree(pStore);
     return NULL;
@@ -122,6 +122,7 @@ STqOffsetStore* tqOffsetOpen(STQ* pTq) {
 }
 
 void tqOffsetClose(STqOffsetStore* pStore) {
+  if(pStore == NULL) return;
   tqOffsetCommitFile(pStore);
   taosHashCleanup(pStore->pHash);
   taosMemoryFree(pStore);

@@ -16,6 +16,7 @@
 #define _DEFAULT_SOURCE
 #include "dmMgmt.h"
 #include "dmNodes.h"
+#include "audit.h"
 
 static void dmGetMonitorBasicInfo(SDnode *pDnode, SMonBasicInfo *pInfo) {
   pInfo->protocol = 1;
@@ -108,12 +109,28 @@ void dmSendMonitorReport() {
   monSendReport();
 }
 
+//Todo: put this in seperate file in the future
+void dmSendAuditRecords() {
+  auditSendRecordsInBatch();
+}
+
 void dmGetVnodeLoads(SMonVloadInfo *pInfo) {
   SDnode       *pDnode = dmInstance();
   SMgmtWrapper *pWrapper = &pDnode->wrappers[VNODE];
   if (dmMarkWrapper(pWrapper) == 0) {
     if (pWrapper->pMgmt != NULL) {
       vmGetVnodeLoads(pWrapper->pMgmt, pInfo, false);
+    }
+    dmReleaseWrapper(pWrapper);
+  }
+}
+
+void dmGetVnodeLoadsLite(SMonVloadInfo *pInfo) {
+  SDnode       *pDnode = dmInstance();
+  SMgmtWrapper *pWrapper = &pDnode->wrappers[VNODE];
+  if (dmMarkWrapper(pWrapper) == 0) {
+    if (pWrapper->pMgmt != NULL) {
+      vmGetVnodeLoadsLite(pWrapper->pMgmt, pInfo);
     }
     dmReleaseWrapper(pWrapper);
   }

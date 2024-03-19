@@ -90,6 +90,7 @@ void dmSendStatusReq(SDnodeMgmt *pMgmt) {
 
   req.clusterCfg.statusInterval = tsStatusInterval;
   req.clusterCfg.checkTime = 0;
+  req.clusterCfg.ttlChangeOnWrite = tsTtlChangeOnWrite;
   char timestr[32] = "1970-01-01 00:00:00.00";
   (void)taosParseTime(timestr, &req.clusterCfg.checkTime, (int32_t)strlen(timestr), TSDB_TIME_PRECISION_MILLI, 0);
   memcpy(req.clusterCfg.timezone, tsTimezoneStr, TD_TIMEZONE_LEN);
@@ -120,21 +121,58 @@ void dmSendStatusReq(SDnodeMgmt *pMgmt) {
                     .msgType = TDMT_MND_STATUS,
                     .info.ahandle = (void *)0x9527,
                     .info.refId = 0,
-                    .info.noResp = 0};
+                    .info.noResp = 0,
+                    .info.handle = 0};
   SRpcMsg rpcRsp = {0};
 
   dTrace("send status req to mnode, dnodeVer:%" PRId64 " statusSeq:%d", req.dnodeVer, req.statusSeq);
 
+  int8_t epUpdated = 0;
   SEpSet epSet = {0};
   dmGetMnodeEpSet(pMgmt->pData, &epSet);
-  rpcSendRecv(pMgmt->msgCb.clientRpc, &epSet, &rpcMsg, &rpcRsp);
+  rpcSendRecvWithTimeout(pMgmt->msgCb.statusRpc, &epSet, &rpcMsg, &rpcRsp, &epUpdated, tsStatusInterval * 5 * 1000);
   if (rpcRsp.code != 0) {
     dmRotateMnodeEpSet(pMgmt->pData);
-    char tbuf[256];
+    char tbuf[512] = {0};
     dmEpSetToStr(tbuf, sizeof(tbuf), &epSet);
     dError("failed to send status req since %s, epSet:%s, inUse:%d", tstrerror(rpcRsp.code), tbuf, epSet.inUse);
+  } else {
+    if (epUpdated == 1) {
+      dmSetMnodeEpSet(pMgmt->pData, &epSet);
+    }
   }
   dmProcessStatusRsp(pMgmt, &rpcRsp);
+}
+
+void dmSendNotifyReq(SDnodeMgmt *pMgmt) {
+  SNotifyReq req = {0};
+
+  taosThreadRwlockRdlock(&pMgmt->pData->lock);
+  req.dnodeId = pMgmt->pData->dnodeId;
+  taosThreadRwlockUnlock(&pMgmt->pData->lock);
+
+  req.clusterId = pMgmt->pData->clusterId;
+
+  SMonVloadInfo vinfo = {0};
+  (*pMgmt->getVnodeLoadsLiteFp)(&vinfo);
+  req.pVloads = vinfo.pVloads;
+
+  int32_t contLen = tSerializeSNotifyReq(NULL, 0, &req);
+  void   *pHead = rpcMallocCont(contLen);
+  tSerializeSNotifyReq(pHead, contLen, &req);
+  tFreeSNotifyReq(&req);
+
+  SRpcMsg rpcMsg = {.pCont = pHead,
+                    .contLen = contLen,
+                    .msgType = TDMT_MND_NOTIFY,
+                    .info.ahandle = (void *)0x9527,
+                    .info.refId = 0,
+                    .info.noResp = 1,
+                    .info.handle = 0};
+
+  SEpSet epSet = {0};
+  dmGetMnodeEpSet(pMgmt->pData, &epSet);
+  rpcSendRequest(pMgmt->msgCb.clientRpc, &epSet, &rpcMsg, NULL);
 }
 
 int32_t dmProcessAuthRsp(SDnodeMgmt *pMgmt, SRpcMsg *pMsg) {
@@ -265,6 +303,12 @@ int32_t dmAppendVariablesToBlock(SSDataBlock *pBlock, int32_t dnodeId) {
     pColInfo = taosArrayGet(pBlock->pDataBlock, c++);
     colDataSetVal(pColInfo, i, value, false);
 
+    char scope[TSDB_CONFIG_SCOPE_LEN + VARSTR_HEADER_SIZE] = {0};
+    cfgDumpItemScope(pItem, &scope[VARSTR_HEADER_SIZE], TSDB_CONFIG_SCOPE_LEN, &valueLen);
+    varDataSetLen(scope, valueLen);
+    pColInfo = taosArrayGet(pBlock->pDataBlock, c++);
+    colDataSetVal(pColInfo, i, scope, false);
+
     numOfRows++;
   }
 
@@ -282,12 +326,12 @@ int32_t dmProcessRetrieve(SDnodeMgmt *pMgmt, SRpcMsg *pMsg) {
     terrno = TSDB_CODE_INVALID_MSG;
     return -1;
   }
-
+#if 0
   if (strcmp(retrieveReq.user, TSDB_DEFAULT_USER) != 0) {
     terrno = TSDB_CODE_MND_NO_RIGHTS;
     return -1;
   }
-
+#endif
   if (strcasecmp(retrieveReq.tb, TSDB_INS_TABLE_DNODE_VARIABLES)) {
     terrno = TSDB_CODE_INVALID_MSG;
     return -1;
@@ -352,9 +396,11 @@ SArray *dmGetMsgHandles() {
   if (dmSetMgmtHandle(pArray, TDMT_DND_CONFIG_DNODE, dmPutNodeMsgToMgmtQueue, 0) == NULL) goto _OVER;
   if (dmSetMgmtHandle(pArray, TDMT_DND_SERVER_STATUS, dmPutNodeMsgToMgmtQueue, 0) == NULL) goto _OVER;
   if (dmSetMgmtHandle(pArray, TDMT_DND_SYSTABLE_RETRIEVE, dmPutNodeMsgToMgmtQueue, 0) == NULL) goto _OVER;
+  if (dmSetMgmtHandle(pArray, TDMT_DND_ALTER_MNODE_TYPE, dmPutNodeMsgToMgmtQueue, 0) == NULL) goto _OVER;
 
   // Requests handled by MNODE
   if (dmSetMgmtHandle(pArray, TDMT_MND_GRANT, dmPutNodeMsgToMgmtQueue, 0) == NULL) goto _OVER;
+  if (dmSetMgmtHandle(pArray, TDMT_MND_GRANT_NOTIFY, dmPutNodeMsgToMgmtQueue, 0) == NULL) goto _OVER;
   if (dmSetMgmtHandle(pArray, TDMT_MND_AUTH_RSP, dmPutNodeMsgToMgmtQueue, 0) == NULL) goto _OVER;
 
   code = 0;

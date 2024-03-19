@@ -18,6 +18,7 @@
 #include "dmNodes.h"
 #include "index.h"
 #include "qworker.h"
+#include "tstream.h"
 
 static bool dmRequireNode(SDnode *pDnode, SMgmtWrapper *pWrapper) {
   SMgmtInputOpt input = dmBuildMgmtInputOpt(pWrapper);
@@ -153,6 +154,10 @@ int32_t dmInitDnode(SDnode *pDnode) {
   }
 
   indexInit(tsNumOfCommitThreads);
+  streamMetaInit();
+
+  dmInitStatusClient(pDnode);
+  dmInitSyncClient(pDnode);
 
   dmReportStartup("dnode-transport", "initialized");
   dDebug("dnode is created, ptr:%p", pDnode);
@@ -172,9 +177,12 @@ void dmCleanupDnode(SDnode *pDnode) {
   if (pDnode == NULL) return;
 
   dmCleanupClient(pDnode);
+  dmCleanupStatusClient(pDnode);
+  dmCleanupSyncClient(pDnode);
   dmCleanupServer(pDnode);
   dmClearVars(pDnode);
   rpcCleanup();
+  streamMetaCleanup();
   indexCleanup();
   taosConvDestroy();
   dDebug("dnode is closed, ptr:%p", pDnode);

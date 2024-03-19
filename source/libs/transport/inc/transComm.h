@@ -19,15 +19,11 @@ extern "C" {
 #endif
 
 #include <uv.h>
-#include "os.h"
-#include "taoserror.h"
 #include "theap.h"
-#include "tmisce.h"
 #include "transLog.h"
 #include "transportInt.h"
 #include "trpc.h"
 #include "ttrace.h"
-#include "tutil.h"
 
 typedef void* queue[2];
 /* Private macros. */
@@ -99,7 +95,7 @@ typedef void* queue[2];
 // #define TRANS_RETRY_INTERVAL    15    // retry interval (ms)
 #define TRANS_CONN_TIMEOUT 3000  // connect timeout (ms)
 #define TRANS_READ_TIMEOUT 3000  // read timeout  (ms)
-#define TRANS_PACKET_LIMIT 1024 * 1024 * 512
+#define TRANS_PACKET_LIMIT INT32_MAX
 
 #define TRANS_MAGIC_NUM           0x5f375a86
 #define TRANS_NOVALID_PACKET(src) ((src) != TRANS_MAGIC_NUM ? 1 : 0)
@@ -112,10 +108,23 @@ typedef SRpcConnInfo STransHandleInfo;
 
 // ref mgt handle
 typedef struct SExHandle {
-  void*   handle;
-  int64_t refId;
-  void*   pThrd;
+  void*    handle;
+  int64_t  refId;
+  void*    pThrd;
+  queue    q;
+  int8_t   inited;
+  SRWLatch latch;
+
 } SExHandle;
+
+typedef struct {
+  STransMsg* pRsp;
+  SEpSet     epSet;
+  int8_t     hasEpSet;
+  tsem_t*    pSem;
+  int8_t     inited;
+  SRWLatch   latch;
+} STransSyncMsg;
 
 /*convet from fqdn to ip */
 typedef struct SCvtAddr {
@@ -131,11 +140,13 @@ typedef struct {
   tmsg_t msgType;   // message type
   int8_t connType;  // connection type cli/srv
 
-  STransCtx  appCtx;  //
-  STransMsg* pRsp;    // for synchronous API
-  tsem_t*    pSem;    // for synchronous API
-  SCvtAddr   cvtAddr;
-  bool       setMaxRetry;
+  STransCtx      appCtx;    //
+  STransMsg*     pRsp;      // for synchronous API
+  tsem_t*        pSem;      // for synchronous API
+  STransSyncMsg* pSyncMsg;  // for syncchronous with timeout API
+  int64_t        syncMsgRef;
+  SCvtAddr       cvtAddr;
+  bool           setMaxRetry;
 
   int32_t retryMinInterval;
   int32_t retryMaxInterval;
@@ -154,6 +165,7 @@ typedef struct {
 
 #pragma pack(push, 1)
 
+#define TRANS_VER 2
 typedef struct {
   char version : 4;  // RPC version
   char comp : 2;     // compression algorithm, 0:no compression 1:lz4
@@ -166,6 +178,7 @@ typedef struct {
 
   uint64_t timestamp;
   char     user[TSDB_UNI_LEN];
+  int32_t  compatibilityVer;
   uint32_t magicNum;
   STraceId traceId;
   uint64_t ahandle;  // ahandle assigned by client
@@ -240,27 +253,26 @@ void        transAsyncPoolDestroy(SAsyncPool* pool);
 int         transAsyncSend(SAsyncPool* pool, queue* mq);
 bool        transAsyncPoolIsEmpty(SAsyncPool* pool);
 
-#define TRANS_DESTROY_ASYNC_POOL_MSG(pool, msgType, freeFunc) \
-  do {                                                        \
-    for (int i = 0; i < pool->nAsync; i++) {                  \
-      uv_async_t* async = &(pool->asyncs[i]);                 \
-      SAsyncItem* item = async->data;                         \
-      while (!QUEUE_IS_EMPTY(&item->qmsg)) {                  \
-        tTrace("destroy msg in async pool ");                 \
-        queue* h = QUEUE_HEAD(&item->qmsg);                   \
-        QUEUE_REMOVE(h);                                      \
-        msgType* msg = QUEUE_DATA(h, msgType, q);             \
-        if (msg != NULL) {                                    \
-          freeFunc(msg);                                      \
-        }                                                     \
-      }                                                       \
-    }                                                         \
+#define TRANS_DESTROY_ASYNC_POOL_MSG(pool, msgType, freeFunc, param) \
+  do {                                                               \
+    for (int i = 0; i < pool->nAsync; i++) {                         \
+      uv_async_t* async = &(pool->asyncs[i]);                        \
+      SAsyncItem* item = async->data;                                \
+      while (!QUEUE_IS_EMPTY(&item->qmsg)) {                         \
+        tTrace("destroy msg in async pool ");                        \
+        queue* h = QUEUE_HEAD(&item->qmsg);                          \
+        QUEUE_REMOVE(h);                                             \
+        msgType* msg = QUEUE_DATA(h, msgType, q);                    \
+        if (msg != NULL) {                                           \
+          freeFunc(msg, param);                                      \
+        }                                                            \
+      }                                                              \
+    }                                                                \
   } while (0)
 
 #define ASYNC_CHECK_HANDLE(exh1, id)                                                                         \
   do {                                                                                                       \
     if (id > 0) {                                                                                            \
-      tTrace("handle step1");                                                                                \
       SExHandle* exh2 = transAcquireExHandle(transGetRefMgt(), id);                                          \
       if (exh2 == NULL || id != exh2->refId) {                                                               \
         tTrace("handle %p except, may already freed, ignore msg, ref1:%" PRIu64 ", ref2:%" PRIu64, exh1,     \
@@ -291,7 +303,7 @@ bool transReadComplete(SConnBuffer* connBuf);
 int  transResetBuffer(SConnBuffer* connBuf);
 int  transDumpFromBuffer(SConnBuffer* connBuf, char** buf);
 
-int transSetConnOption(uv_tcp_t* stream);
+int transSetConnOption(uv_tcp_t* stream, int keepalive);
 
 void transRefSrvHandle(void* handle);
 void transUnrefSrvHandle(void* handle);
@@ -304,6 +316,8 @@ int transReleaseSrvHandle(void* handle);
 
 int transSendRequest(void* shandle, const SEpSet* pEpSet, STransMsg* pMsg, STransCtx* pCtx);
 int transSendRecv(void* shandle, const SEpSet* pEpSet, STransMsg* pMsg, STransMsg* pRsp);
+int transSendRecvWithTimeout(void* shandle, SEpSet* pEpSet, STransMsg* pMsg, STransMsg* pRsp, int8_t* epUpdated,
+                             int32_t timeoutMs);
 int transSendResponse(const STransMsg* msg);
 int transRegisterMsg(const STransMsg* msg);
 int transSetDefaultAddr(void* shandle, const char* ip, const char* fqdn);
@@ -431,6 +445,7 @@ void    transDestoryExHandle(void* handle);
 
 int32_t transGetRefMgt();
 int32_t transGetInstMgt();
+int32_t transGetSyncMsgMgt();
 
 void transHttpEnvDestroy();
 #ifdef __cplusplus

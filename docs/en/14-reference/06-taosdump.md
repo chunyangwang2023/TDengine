@@ -76,10 +76,9 @@ Usage: taosdump [OPTION...] dbname [tbname ...]
   -A, --all-databases        Dump all databases.
   -D, --databases=DATABASES  Dump listed databases. Use comma to separate
                              database names.
+  -e, --escape-character     Use escaped character for database name
   -N, --without-property     Dump database without its properties.
   -s, --schemaonly           Only dump table schemas.
-  -y, --answer-yes           Input yes for prompt. It will skip data file
-                             checking!
   -d, --avro-codec=snappy    Choose an avro codec among null, deflate, snappy,
                              and lzma.
   -S, --start-time=START_TIME   Start time to dump. Either epoch or
@@ -103,6 +102,8 @@ Usage: taosdump [OPTION...] dbname [tbname ...]
   -L, --loose-mode           Use loose mode if the table name and column name
                              use letter and number only. Default is NOT.
   -n, --no-escape            No escape char '`'. Default is using it.
+  -Q, --dot-replace          Repalce dot character with underline character in
+                             the table name.
   -T, --thread-num=THREAD_NUM   Number of thread for dump in file. Default is
                              8.
   -C, --cloud=CLOUD_DSN      specify a DSN to access TDengine cloud service

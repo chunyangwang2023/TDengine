@@ -16,8 +16,19 @@
 #define _DEFAULT_SOURCE
 #include "tworker.h"
 #include "taoserror.h"
+#include "tgeosctx.h"
 #include "tlog.h"
 
+#define QUEUE_THRESHOLD 1000 * 1000
+
+static void longQueuedMsgToDebug(const char *qname, int64_t st) {
+  if (st == 0) return;
+
+  int64_t cost = taosGetTimestampUs() - st;
+  if (cost > QUEUE_THRESHOLD) {
+    uWarn("worker:%s,message has been queued for too long, cost: %" PRId64 "s", qname, cost / QUEUE_THRESHOLD);
+  }
+}
 typedef void *(*ThreadFp)(void *param);
 
 int32_t tQWorkerInit(SQWorkerPool *pool) {
@@ -81,6 +92,7 @@ static void *tQWorkerThreadFp(SQueueWorker *worker) {
             worker->pid);
       break;
     }
+    longQueuedMsgToDebug(pool->name, qinfo.timestamp);
 
     if (qinfo.fp != NULL) {
       qinfo.workerId = worker->id;
@@ -90,6 +102,8 @@ static void *tQWorkerThreadFp(SQueueWorker *worker) {
 
     taosUpdateItemSize(qinfo.queue, 1);
   }
+
+  destroyThreadLocalGeosCtx();
 
   return NULL;
 }
@@ -192,6 +206,7 @@ static void *tAutoQWorkerThreadFp(SQueueWorker *worker) {
             worker->pid);
       break;
     }
+    longQueuedMsgToDebug(pool->name, qinfo.timestamp);
 
     if (qinfo.fp != NULL) {
       qinfo.workerId = worker->id;
@@ -330,6 +345,8 @@ static void *tWWorkerThreadFp(SWWorker *worker) {
             worker->pid);
       break;
     }
+
+    longQueuedMsgToDebug(pool->name, qinfo.timestamp);
 
     if (qinfo.fp != NULL) {
       qinfo.workerId = worker->id;

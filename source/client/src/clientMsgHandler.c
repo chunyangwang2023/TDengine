@@ -16,6 +16,7 @@
 #include "catalog.h"
 #include "clientInt.h"
 #include "clientLog.h"
+#include "cmdnodes.h"
 #include "os.h"
 #include "query.h"
 #include "systable.h"
@@ -24,6 +25,8 @@
 #include "tglobal.h"
 #include "tname.h"
 #include "tversion.h"
+
+extern SClientHbMgr clientHbMgr;
 
 static void setErrno(SRequestObj* pRequest, int32_t code) {
   pRequest->code = code;
@@ -62,8 +65,9 @@ int32_t processConnectRsp(void* param, SDataBuf* pMsg, int32_t code) {
 
   STscObj* pTscObj = pRequest->pTscObj;
 
-  if (NULL == pTscObj->pAppInfo || NULL == pTscObj->pAppInfo->pAppHbMgr) {
-    setErrno(pRequest, TSDB_CODE_TSC_DISCONNECTED);
+  if (NULL == pTscObj->pAppInfo) {
+    code = TSDB_CODE_TSC_DISCONNECTED;
+    setErrno(pRequest, code);
     tsem_post(&pRequest->body.rspSem);
     goto End;
   }
@@ -77,6 +81,7 @@ int32_t processConnectRsp(void* param, SDataBuf* pMsg, int32_t code) {
   }
 
   if ((code = taosCheckVersionCompatibleFromStr(version, connectRsp.sVer, 3)) != 0) {
+    tscError("version not compatible. client version: %s, server version: %s", version, connectRsp.sVer);
     setErrno(pRequest, code);
     tsem_post(&pRequest->body.rspSem);
     goto End;
@@ -93,18 +98,26 @@ int32_t processConnectRsp(void* param, SDataBuf* pMsg, int32_t code) {
   }
 
   if (connectRsp.epSet.numOfEps == 0) {
-    setErrno(pRequest, TSDB_CODE_APP_ERROR);
+    code = TSDB_CODE_APP_ERROR;
+    setErrno(pRequest, code);
     tsem_post(&pRequest->body.rspSem);
     goto End;
   }
 
+  int updateEpSet = 1;
   if (connectRsp.dnodeNum == 1) {
     SEpSet srcEpSet = getEpSet_s(&pTscObj->pAppInfo->mgmtEp);
     SEpSet dstEpSet = connectRsp.epSet;
-    rpcSetDefaultAddr(pTscObj->pAppInfo->pTransporter, srcEpSet.eps[srcEpSet.inUse].fqdn,
-                      dstEpSet.eps[dstEpSet.inUse].fqdn);
-  } else if (connectRsp.dnodeNum > 1 && !isEpsetEqual(&pTscObj->pAppInfo->mgmtEp.epSet, &connectRsp.epSet)) {
-    SEpSet* pOrig = &pTscObj->pAppInfo->mgmtEp.epSet;
+    if (srcEpSet.numOfEps == 1) {
+      rpcSetDefaultAddr(pTscObj->pAppInfo->pTransporter, srcEpSet.eps[srcEpSet.inUse].fqdn,
+                        dstEpSet.eps[dstEpSet.inUse].fqdn);
+      updateEpSet = 0;
+    }
+  }
+  if (updateEpSet == 1 && !isEpsetEqual(&pTscObj->pAppInfo->mgmtEp.epSet, &connectRsp.epSet)) {
+    SEpSet corEpSet = getEpSet_s(&pTscObj->pAppInfo->mgmtEp);
+
+    SEpSet* pOrig = &corEpSet;
     SEp*    pOrigEp = &pOrig->eps[pOrig->inUse];
     SEp*    pNewEp = &connectRsp.epSet.eps[connectRsp.epSet.inUse];
     tscDebug("mnode epset updated from %d/%d=>%s:%d to %d/%d=>%s:%d in connRsp", pOrig->inUse, pOrig->numOfEps,
@@ -129,8 +142,21 @@ int32_t processConnectRsp(void* param, SDataBuf* pMsg, int32_t code) {
   lastClusterId = connectRsp.clusterId;
 
   pTscObj->connType = connectRsp.connType;
+  pTscObj->passInfo.ver = connectRsp.passVer;
+  pTscObj->authVer = connectRsp.authVer;
 
-  hbRegisterConn(pTscObj->pAppInfo->pAppHbMgr, pTscObj->id, connectRsp.clusterId, connectRsp.connType);
+  taosThreadMutexLock(&clientHbMgr.lock);
+  SAppHbMgr* pAppHbMgr = taosArrayGetP(clientHbMgr.appHbMgrs, pTscObj->appHbMgrIdx);
+  if (pAppHbMgr) {
+    hbRegisterConn(pAppHbMgr, pTscObj->id, connectRsp.clusterId, connectRsp.connType);
+  } else {
+    taosThreadMutexUnlock(&clientHbMgr.lock);
+    code = TSDB_CODE_TSC_DISCONNECTED;
+    setErrno(pRequest, code);
+    tsem_post(&pRequest->body.rspSem);
+    goto End;
+  }
+  taosThreadMutexUnlock(&clientHbMgr.lock);
 
   tscDebug("0x%" PRIx64 " clusterId:%" PRId64 ", totalConn:%" PRId64, pRequest->requestId, connectRsp.clusterId,
            pTscObj->pAppInfo->numOfConns);
@@ -425,11 +451,14 @@ static int32_t buildShowVariablesBlock(SArray* pVars, SSDataBlock** block) {
   SColumnInfoData infoData = {0};
   infoData.info.type = TSDB_DATA_TYPE_VARCHAR;
   infoData.info.bytes = SHOW_VARIABLES_RESULT_FIELD1_LEN;
-
   taosArrayPush(pBlock->pDataBlock, &infoData);
 
   infoData.info.type = TSDB_DATA_TYPE_VARCHAR;
   infoData.info.bytes = SHOW_VARIABLES_RESULT_FIELD2_LEN;
+  taosArrayPush(pBlock->pDataBlock, &infoData);
+
+  infoData.info.type = TSDB_DATA_TYPE_VARCHAR;
+  infoData.info.bytes = SHOW_VARIABLES_RESULT_FIELD3_LEN;
   taosArrayPush(pBlock->pDataBlock, &infoData);
 
   int32_t numOfCfg = taosArrayGetSize(pVars);
@@ -447,6 +476,11 @@ static int32_t buildShowVariablesBlock(SArray* pVars, SSDataBlock** block) {
     STR_WITH_MAXSIZE_TO_VARSTR(value, pInfo->value, TSDB_CONFIG_VALUE_LEN + VARSTR_HEADER_SIZE);
     pColInfo = taosArrayGet(pBlock->pDataBlock, c++);
     colDataSetVal(pColInfo, i, value, false);
+
+    char scope[TSDB_CONFIG_SCOPE_LEN + VARSTR_HEADER_SIZE] = {0};
+    STR_WITH_MAXSIZE_TO_VARSTR(scope, pInfo->scope, TSDB_CONFIG_SCOPE_LEN + VARSTR_HEADER_SIZE);
+    pColInfo = taosArrayGet(pBlock->pDataBlock, c++);
+    colDataSetVal(pColInfo, i, scope, false);
   }
 
   pBlock->info.rows = numOfCfg;
@@ -502,13 +536,125 @@ int32_t processShowVariablesRsp(void* param, SDataBuf* pMsg, int32_t code) {
       code = buildShowVariablesRsp(rsp.variables, &pRes);
     }
     if (TSDB_CODE_SUCCESS == code) {
-      code = setQueryResultFromRsp(&pRequest->body.resInfo, pRes, false, true);
+      code = setQueryResultFromRsp(&pRequest->body.resInfo, pRes, false);
     }
 
     if (code != 0) {
       taosMemoryFree(pRes);
     }
     tFreeSShowVariablesRsp(&rsp);
+  }
+
+  taosMemoryFree(pMsg->pData);
+  taosMemoryFree(pMsg->pEpSet);
+
+  if (pRequest->body.queryFp != NULL) {
+    pRequest->body.queryFp(pRequest->body.param, pRequest, code);
+  } else {
+    tsem_post(&pRequest->body.rspSem);
+  }
+  return code;
+}
+
+static int32_t buildCompactDbBlock(SCompactDbRsp* pRsp, SSDataBlock** block) {
+  SSDataBlock* pBlock = taosMemoryCalloc(1, sizeof(SSDataBlock));
+  pBlock->info.hasVarCol = true;
+
+  pBlock->pDataBlock = taosArrayInit(COMPACT_DB_RESULT_COLS, sizeof(SColumnInfoData));
+
+  SColumnInfoData infoData = {0};
+  infoData.info.type = TSDB_DATA_TYPE_VARCHAR;
+  infoData.info.bytes = COMPACT_DB_RESULT_FIELD1_LEN;
+  taosArrayPush(pBlock->pDataBlock, &infoData);
+
+  infoData.info.type = TSDB_DATA_TYPE_INT;
+  infoData.info.bytes = tDataTypes[TSDB_DATA_TYPE_INT].bytes;
+  taosArrayPush(pBlock->pDataBlock, &infoData);
+
+  infoData.info.type = TSDB_DATA_TYPE_VARCHAR;
+  infoData.info.bytes = COMPACT_DB_RESULT_FIELD3_LEN;
+  taosArrayPush(pBlock->pDataBlock, &infoData);
+
+  blockDataEnsureCapacity(pBlock, 1);
+
+  SColumnInfoData* pResultCol = taosArrayGet(pBlock->pDataBlock, 0);
+  SColumnInfoData* pIdCol = taosArrayGet(pBlock->pDataBlock, 1);
+  SColumnInfoData* pReasonCol = taosArrayGet(pBlock->pDataBlock, 2);
+
+  char result[COMPACT_DB_RESULT_FIELD1_LEN] = {0};
+  char reason[COMPACT_DB_RESULT_FIELD3_LEN] = {0};
+  if (pRsp->bAccepted) {
+    STR_TO_VARSTR(result, "accepted");
+    colDataSetVal(pResultCol, 0, result, false);
+    colDataSetVal(pIdCol, 0, (void*)&pRsp->compactId, false);
+    STR_TO_VARSTR(reason, "success");
+    colDataSetVal(pReasonCol, 0, reason, false);
+  } else {
+    STR_TO_VARSTR(result, "rejected");
+    colDataSetVal(pResultCol, 0, result, false);
+    colDataSetNULL(pIdCol, 0);
+    STR_TO_VARSTR(reason, "compaction is ongoing");
+    colDataSetVal(pReasonCol, 0, reason, false);
+  }
+  pBlock->info.rows = 1;
+
+  *block = pBlock;
+
+  return TSDB_CODE_SUCCESS;
+}
+
+static int32_t buildRetriveTableRspForCompactDb(SCompactDbRsp* pCompactDb, SRetrieveTableRsp** pRsp) {
+  SSDataBlock* pBlock = NULL;
+  int32_t      code = buildCompactDbBlock(pCompactDb, &pBlock);
+  if (code) {
+    return code;
+  }
+
+  size_t rspSize = sizeof(SRetrieveTableRsp) + blockGetEncodeSize(pBlock);
+  *pRsp = taosMemoryCalloc(1, rspSize);
+  if (NULL == *pRsp) {
+    blockDataDestroy(pBlock);
+    return TSDB_CODE_OUT_OF_MEMORY;
+  }
+
+  (*pRsp)->useconds = 0;
+  (*pRsp)->completed = 1;
+  (*pRsp)->precision = 0;
+  (*pRsp)->compressed = 0;
+  (*pRsp)->compLen = 0;
+  (*pRsp)->numOfRows = htobe64((int64_t)pBlock->info.rows);
+  (*pRsp)->numOfCols = htonl(COMPACT_DB_RESULT_COLS);
+
+  int32_t len = blockEncode(pBlock, (*pRsp)->data, COMPACT_DB_RESULT_COLS);
+  blockDataDestroy(pBlock);
+
+  if (len != rspSize - sizeof(SRetrieveTableRsp)) {
+    uError("buildRetriveTableRspForCompactDb error, len:%d != rspSize - sizeof(SRetrieveTableRsp):%" PRIu64, len,
+           (uint64_t)(rspSize - sizeof(SRetrieveTableRsp)));
+    return TSDB_CODE_TSC_INVALID_INPUT;
+  }
+
+  return TSDB_CODE_SUCCESS;
+}
+
+int32_t processCompactDbRsp(void* param, SDataBuf* pMsg, int32_t code) {
+  SRequestObj* pRequest = param;
+  if (code != TSDB_CODE_SUCCESS) {
+    setErrno(pRequest, code);
+  } else {
+    SCompactDbRsp      rsp = {0};
+    SRetrieveTableRsp* pRes = NULL;
+    code = tDeserializeSCompactDbRsp(pMsg->pData, pMsg->len, &rsp);
+    if (TSDB_CODE_SUCCESS == code) {
+      code = buildRetriveTableRspForCompactDb(&rsp, &pRes);
+    }
+    if (TSDB_CODE_SUCCESS == code) {
+      code = setQueryResultFromRsp(&pRequest->body.resInfo, pRes, false);
+    }
+
+    if (code != 0) {
+      taosMemoryFree(pRes);
+    }
   }
 
   taosMemoryFree(pMsg->pData);
@@ -538,6 +684,8 @@ __async_send_cb_fn_t getMsgRspHandle(int32_t msgType) {
       return processAlterStbRsp;
     case TDMT_MND_SHOW_VARIABLES:
       return processShowVariablesRsp;
+    case TDMT_MND_COMPACT_DB:
+      return processCompactDbRsp;
     default:
       return genericRspCallback;
   }

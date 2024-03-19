@@ -75,7 +75,8 @@ static FORCE_INLINE int64_t taosGetTimestampToday(int32_t precision) {
 int64_t taosTimeAdd(int64_t t, int64_t duration, char unit, int32_t precision);
 
 int64_t taosTimeTruncate(int64_t ts, const SInterval* pInterval);
-int32_t taosTimeCountInterval(int64_t skey, int64_t ekey, int64_t interval, char unit, int32_t precision);
+int64_t taosTimeGetIntervalEnd(int64_t ts, const SInterval* pInterval);
+int32_t taosTimeCountIntervalForFill(int64_t skey, int64_t ekey, int64_t interval, char unit, int32_t precision, int32_t order);
 
 int32_t parseAbsoluteDuration(const char* token, int32_t tokenlen, int64_t* ts, char* unit, int32_t timePrecision);
 int32_t parseNatualDuration(const char* token, int32_t tokenLen, int64_t* duration, char* unit, int32_t timePrecision);
@@ -89,6 +90,13 @@ int64_t convertTimeFromPrecisionToUnit(int64_t ts, int32_t fromPrecision, char t
 int32_t convertStringToTimestamp(int16_t type, char* inputData, int64_t timePrec, int64_t* timeVal);
 
 void taosFormatUtcTime(char* buf, int32_t bufLen, int64_t ts, int32_t precision);
+
+/// @brief get offset seconds from zero timezone to input timezone
+///        for +XX timezone, the offset to zero is negative value
+/// @param tzStr timezonestr, eg: +0800, -0830, -08
+/// @param offset seconds, eg: +08 offset -28800, -01 offset 3600
+/// @return 0 success, other fail
+int32_t offsetOfTimezone(char* tzStr, int64_t* offset);
 
 #ifdef __cplusplus
 }

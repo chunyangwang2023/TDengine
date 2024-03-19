@@ -12,7 +12,7 @@
 
 [![Build Status](https://cloud.drone.io/api/badges/taosdata/TDengine/status.svg?ref=refs/heads/master)](https://cloud.drone.io/taosdata/TDengine)
 [![Build status](https://ci.appveyor.com/api/projects/status/kf3pwh2or5afsgl9/branch/master?svg=true)](https://ci.appveyor.com/project/sangshuduo/tdengine-2n8ge/branch/master)
-[![Coverage Status](https://coveralls.io/repos/github/taosdata/TDengine/badge.svg?branch=develop)](https://coveralls.io/github/taosdata/TDengine?branch=develop)
+[![Coverage Status](https://coveralls.io/repos/github/taosdata/TDengine/badge.svg?branch=3.0)](https://coveralls.io/github/taosdata/TDengine?branch=3.0)
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/4201/badge)](https://bestpractices.coreinfrastructure.org/projects/4201)
 <br />
 [![Twitter Follow](https://img.shields.io/twitter/follow/tdenginedb?label=TDengine&style=social)](https://twitter.com/tdenginedb)
@@ -47,13 +47,13 @@ For user manual, system design and architecture, please refer to [TDengine Docum
 
 # Building
 
-At the moment, TDengine server supports running on Linux/Windows/macOS systems. Any application can also choose the RESTful interface provided by taosAdapter to connect the taosd service . TDengine supports X64/ARM64 CPU, and it will support MIPS64, Alpha64, ARM32, RISC-V and other CPU architectures in the future.
+At the moment, TDengine server supports running on Linux/Windows/macOS systems. Any application can also choose the RESTful interface provided by taosAdapter to connect the taosd service . TDengine supports X64/ARM64 CPU, and it will support MIPS64, Alpha64, ARM32, RISC-V and other CPU architectures in the future. Right now we don't support build with cross-compiling environment.
 
 You can choose to install through source code, [container](https://docs.tdengine.com/get-started/docker/), [installation package](https://docs.tdengine.com/get-started/package/) or [Kubernetes](https://docs.tdengine.com/deployment/k8s/). This quick guide only applies to installing from source.
 
 TDengine provide a few useful tools such as taosBenchmark (was named taosdemo) and taosdump. They were part of TDengine. By default, TDengine compiling does not include taosTools. You can use `cmake .. -DBUILD_TOOLS=true` to make them be compiled with TDengine.
 
-To build TDengine, use [CMake](https://cmake.org/) 3.0.2 or higher versions in the project directory.
+To build TDengine, use [CMake](https://cmake.org/) 3.13.0 or higher versions in the project directory.
 
 ## Install build tools
 
@@ -76,14 +76,14 @@ sudo apt install build-essential libjansson-dev libsnappy-dev liblzma-dev libz-d
 ```bash
 sudo yum install epel-release
 sudo yum update
-sudo yum install -y gcc gcc-c++ make cmake3 git openssl-devel
+sudo yum install -y gcc gcc-c++ make cmake3 gflags git openssl-devel
 sudo ln -sf /usr/bin/cmake3 /usr/bin/cmake
 ```
 
-### CentOS 8 & Fedora
+### CentOS 8/Fedora/Rocky Linux
 
 ```bash
-sudo dnf install -y gcc gcc-c++ make cmake epel-release git openssl-devel
+sudo dnf install -y gcc gcc-c++ make cmake epel-release gflags git openssl-devel
 ```
 
 #### Install build dependencies for taosTools on CentOS
@@ -94,7 +94,7 @@ sudo dnf install -y gcc gcc-c++ make cmake epel-release git openssl-devel
 sudo yum install -y zlib-devel zlib-static xz-devel snappy-devel jansson jansson-devel pkgconfig libatomic libatomic-static libstdc++-static openssl-devel
 ```
 
-#### CentOS 8/Rocky Linux
+#### CentOS 8/Fedora/Rocky Linux
 
 ```
 sudo yum install -y epel-release
@@ -124,14 +124,14 @@ scl enable devtoolset-9 -- bash
 ### macOS
 
 ```
-brew install argp-standalone pkgconfig
+brew install argp-standalone gflags pkgconfig
 ```
 
 ### Setup golang environment
 
 TDengine includes a few components like taosAdapter developed by Go language. Please refer to golang.org official documentation for golang environment setup.
 
-Please use version 1.14+. For the user in China, we recommend using a proxy to accelerate package downloading.
+Please use version 1.20+. For the user in China, we recommend using a proxy to accelerate package downloading.
 
 ```
 go env -w GO111MODULE=on
@@ -183,7 +183,7 @@ It equals to execute following commands:
 ```bash
 mkdir debug
 cd debug
-cmake .. -DBUILD_TOOLS=true
+cmake .. -DBUILD_TOOLS=true -DBUILD_CONTRIB=true
 make
 ```
 

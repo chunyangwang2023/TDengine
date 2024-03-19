@@ -33,7 +33,7 @@ column_definition:
 SHOW STABLES [LIKE tb_name_wildcard];
 ```
 
-查看数据库内全部 STable，及其相关信息，包括 STable 的名称、创建时间、列数量、标签（TAG）数量、通过该 STable 建表的数量。
+查看数据库内全部超级表。
 
 ### 显示一个超级表的创建语句
 
@@ -50,6 +50,11 @@ DESCRIBE [db_name.]stb_name;
 ```
 
 ### 获取超级表中所有子表的标签信息
+
+```
+SHOW TABLE TAGS FROM table_name [FROM db_name];
+SHOW TABLE TAGS FROM [db_name.]table_name;
+```
 
 ```
 taos> SHOW TABLE TAGS FROM st1;

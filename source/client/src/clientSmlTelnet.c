@@ -91,6 +91,10 @@ static int32_t smlParseTelnetTags(SSmlHandle *info, char *data, char *sqlEnd, SS
           return TSDB_CODE_SUCCESS;
         }
         sMeta = smlBuildSTableMeta(info->dataFormat);
+        if(sMeta == NULL){
+          taosMemoryFreeClear(pTableMeta);
+          return TSDB_CODE_OUT_OF_MEMORY;
+        }
         sMeta->tableMeta = pTableMeta;
         taosHashPut(info->superTables, elements->measure, elements->measureLen, &sMeta, POINTER_BYTES);
         for(int i = pTableMeta->tableInfo.numOfColumns; i < pTableMeta->tableInfo.numOfTags + pTableMeta->tableInfo.numOfColumns; i++){
@@ -158,7 +162,7 @@ static int32_t smlParseTelnetTags(SSmlHandle *info, char *data, char *sqlEnd, SS
       return TSDB_CODE_TSC_INVALID_VALUE;
     }
 
-    if (unlikely(valueLen > (TSDB_MAX_NCHAR_LEN - VARSTR_HEADER_SIZE) / TSDB_NCHAR_SIZE)) {
+    if (unlikely(valueLen > (TSDB_MAX_TAGS_LEN - VARSTR_HEADER_SIZE) / TSDB_NCHAR_SIZE)) {
       return TSDB_CODE_PAR_INVALID_VAR_COLUMN_LEN;
     }
 
@@ -212,7 +216,7 @@ static int32_t smlParseTelnetTags(SSmlHandle *info, char *data, char *sqlEnd, SS
       tinfo->tableDataCtx = smlInitTableDataCtx(info->pQuery, info->currSTableMeta);
       if (tinfo->tableDataCtx == NULL) {
         smlBuildInvalidDataMsg(&info->msgBuf, "smlInitTableDataCtx error", NULL);
-        smlDestroyTableInfo(info, tinfo);
+        smlDestroyTableInfo(&tinfo);
         return TSDB_CODE_SML_INVALID_DATA;
       }
     }
@@ -256,8 +260,8 @@ int32_t smlParseTelnetString(SSmlHandle *info, char *sql, char *sqlEnd, SSmlLine
     smlBuildInvalidDataMsg(&info->msgBuf, "invalid timestamp", sql);
     return TSDB_CODE_INVALID_TIMESTAMP;
   }
-  SSmlKv kvTs = {.key = TS,
-                 .keyLen = TS_LEN,
+  SSmlKv kvTs = {.key = tsSmlTsDefaultName,
+                 .keyLen = strlen(tsSmlTsDefaultName),
                  .type = TSDB_DATA_TYPE_TIMESTAMP,
                  .i = ts,
                  .length = (size_t)tDataTypes[TSDB_DATA_TYPE_TIMESTAMP].bytes};
@@ -303,7 +307,7 @@ int32_t smlParseTelnetString(SSmlHandle *info, char *sql, char *sqlEnd, SSmlLine
     if (ret == TSDB_CODE_SUCCESS) {
       ret = smlBuildRow(info->currTableDataCtx);
     }
-    clearColValArray(info->currTableDataCtx->pValues);
+    clearColValArraySml(info->currTableDataCtx->pValues);
     if (unlikely(ret != TSDB_CODE_SUCCESS)) {
       smlBuildInvalidDataMsg(&info->msgBuf, "smlBuildCol error", NULL);
       return ret;

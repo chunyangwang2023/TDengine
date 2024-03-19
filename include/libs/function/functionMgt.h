@@ -122,6 +122,8 @@ typedef enum EFunctionType {
   FUNCTION_TYPE_IROWTS,
   FUNCTION_TYPE_ISFILLED,
   FUNCTION_TYPE_TAGS,
+  FUNCTION_TYPE_TBUID,
+  FUNCTION_TYPE_VGID,
 
   // internal function
   FUNCTION_TYPE_SELECT_VALUE = 3750,
@@ -157,6 +159,19 @@ typedef enum EFunctionType {
   FUNCTION_TYPE_AVG_MERGE,
   FUNCTION_TYPE_STDDEV_PARTIAL,
   FUNCTION_TYPE_STDDEV_MERGE,
+  FUNCTION_TYPE_IRATE_PARTIAL,
+  FUNCTION_TYPE_IRATE_MERGE,
+
+  // geometry functions
+  FUNCTION_TYPE_GEOM_FROM_TEXT = 4250,
+  FUNCTION_TYPE_AS_TEXT,
+  FUNCTION_TYPE_MAKE_POINT,
+  FUNCTION_TYPE_INTERSECTS,
+  FUNCTION_TYPE_EQUALS,
+  FUNCTION_TYPE_TOUCHES,
+  FUNCTION_TYPE_COVERS,
+  FUNCTION_TYPE_CONTAINS,
+  FUNCTION_TYPE_CONTAINS_PROPERLY,
 
   // user defined funcion
   FUNCTION_TYPE_UDF = 10000
@@ -205,7 +220,7 @@ bool fmIsUserDefinedFunc(int32_t funcId);
 bool fmIsDistExecFunc(int32_t funcId);
 bool fmIsForbidFillFunc(int32_t funcId);
 bool fmIsForbidStreamFunc(int32_t funcId);
-bool fmIsForbidSuperTableFunc(int32_t funcId);
+bool fmIsForbidSysTableFunc(int32_t funcId);
 bool fmIsIntervalInterpoFunc(int32_t funcId);
 bool fmIsInterpFunc(int32_t funcId);
 bool fmIsLastRowFunc(int32_t funcId);
@@ -220,8 +235,11 @@ bool fmIsCumulativeFunc(int32_t funcId);
 bool fmIsInterpPseudoColumnFunc(int32_t funcId);
 bool fmIsGroupKeyFunc(int32_t funcId);
 bool fmIsBlockDistFunc(int32_t funcId);
+bool fmIsConstantResFunc(SFunctionNode* pFunc);
+bool fmIsSkipScanCheckFunc(int32_t funcId);
 
 void getLastCacheDataType(SDataType* pType);
+SFunctionNode* createFunction(const char* pName, SNodeList* pParameterList);
 
 int32_t fmGetDistMethod(const SFunctionNode* pFunc, SFunctionNode** pPartialFunc, SFunctionNode** pMergeFunc);
 

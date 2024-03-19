@@ -33,6 +33,7 @@ extern "C" {
 #include "ttime.h"
 #include "ttypes.h"
 #include "cJSON.h"
+#include "geosWrapper.h"
 
 #if (defined(__GNUC__) && (__GNUC__ >= 3)) || (defined(__INTEL_COMPILER) && (__INTEL_COMPILER >= 800)) || defined(__clang__)
 #  define expect(expr,value)    (__builtin_expect ((expr),(value)) )
@@ -64,8 +65,8 @@ extern "C" {
 #define IS_INVALID_COL_LEN(len)   ((len) <= 0 || (len) >= TSDB_COL_NAME_LEN)
 #define IS_INVALID_TABLE_LEN(len) ((len) <= 0 || (len) >= TSDB_TABLE_NAME_LEN)
 
-#define TS        "_ts"
-#define TS_LEN    3
+//#define TS        "_ts"
+//#define TS_LEN    3
 #define VALUE     "_value"
 #define VALUE_LEN 6
 
@@ -164,7 +165,6 @@ typedef struct {
   int8_t          precision;
   bool            reRun;
   bool            dataFormat;  // true means that the name and order of keys in each line are the same(only for influx protocol)
-  bool            isRawLine;
   int32_t         ttl;
   int32_t         uid; // used for automatic create child table
 
@@ -192,7 +192,7 @@ typedef struct {
   //
   SArray      *preLineTagKV;
   SArray      *maxTagKVs;
-  SArray      *masColKVs;
+  SArray      *maxColKVs;
 
   SSmlLineInfo preLine;
   STableMeta  *currSTableMeta;
@@ -232,9 +232,9 @@ int           smlJsonParseObjFirst(char **start, SSmlLineInfo *element, int8_t *
 int           smlJsonParseObj(char **start, SSmlLineInfo *element, int8_t *offset);
 //SArray       *smlJsonParseTags(char *start, char *end);
 bool          smlParseNumberOld(SSmlKv *kvVal, SSmlMsgBuf *msg);
-void*         nodeListGet(NodeList* list, const void *key, int32_t len, _equal_fn_sml fn);
-int           nodeListSet(NodeList** list, const void *key, int32_t len, void* value, _equal_fn_sml fn);
-int           nodeListSize(NodeList* list);
+//void*         nodeListGet(NodeList* list, const void *key, int32_t len, _equal_fn_sml fn);
+//int           nodeListSet(NodeList** list, const void *key, int32_t len, void* value, _equal_fn_sml fn);
+//int           nodeListSize(NodeList* list);
 bool          smlDoubleToInt64OverFlow(double num);
 int32_t       smlBuildInvalidDataMsg(SSmlMsgBuf *pBuf, const char *msg1, const char *msg2);
 bool          smlParseNumber(SSmlKv *kvVal, SSmlMsgBuf *msg);
@@ -250,14 +250,14 @@ int64_t           smlParseOpenTsdbTime(SSmlHandle *info, const char *data, int32
 int32_t           smlClearForRerun(SSmlHandle *info);
 int32_t           smlParseValue(SSmlKv *pVal, SSmlMsgBuf *msg);
 uint8_t           smlGetTimestampLen(int64_t num);
-void              clearColValArray(SArray* pCols);
-void              smlDestroyTableInfo(SSmlHandle *info, SSmlTableInfo *tag);
+void              smlDestroyTableInfo(void *para);
 
 void freeSSmlKv(void* data);
 int32_t smlParseInfluxString(SSmlHandle *info, char *sql, char *sqlEnd, SSmlLineInfo *elements);
 int32_t smlParseTelnetString(SSmlHandle *info, char *sql, char *sqlEnd, SSmlLineInfo *elements);
 int32_t smlParseJSON(SSmlHandle *info, char *payload);
 
+void    smlStrReplace(char* src, int32_t len);
 #ifdef __cplusplus
 }
 #endif

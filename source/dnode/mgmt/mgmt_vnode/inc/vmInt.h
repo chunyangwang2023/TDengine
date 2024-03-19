@@ -46,6 +46,8 @@ typedef struct {
   int32_t vgId;
   int32_t vgVersion;
   int8_t  dropped;
+  int32_t diskPrimary;
+  int32_t toVgId;
   char    path[PATH_MAX + 20];
 } SWrapperCfg;
 
@@ -55,6 +57,8 @@ typedef struct {
   int32_t       refCount;
   int8_t        dropped;
   int8_t        disable;
+  int32_t       diskPrimary;
+  int32_t       toVgId;
   char         *path;
   SVnode       *pImpl;
   SMultiWorker  pWriteW;
@@ -70,6 +74,7 @@ typedef struct {
   int32_t      vnodeNum;
   int32_t      opened;
   int32_t      failed;
+  bool         updateVnodesList;
   int32_t      threadIndex;
   TdThread     thread;
   SVnodeMgmt  *pMgmt;
@@ -78,6 +83,7 @@ typedef struct {
 } SVnodeThread;
 
 // vmInt.c
+int32_t    vmAllocPrimaryDisk(SVnodeMgmt *pMgmt, int32_t vgId);
 SVnodeObj *vmAcquireVnode(SVnodeMgmt *pMgmt, int32_t vgId);
 void       vmReleaseVnode(SVnodeMgmt *pMgmt, SVnodeObj *pVnode);
 int32_t    vmOpenVnode(SVnodeMgmt *pMgmt, SWrapperCfg *pCfg, SVnode *pImpl);
@@ -90,6 +96,8 @@ int32_t vmProcessDropVnodeReq(SVnodeMgmt *pMgmt, SRpcMsg *pMsg);
 int32_t vmProcessAlterVnodeReplicaReq(SVnodeMgmt *pMgmt, SRpcMsg *pMsg);
 int32_t vmProcessDisableVnodeWriteReq(SVnodeMgmt *pMgmt, SRpcMsg *pMsg);
 int32_t vmProcessAlterHashRangeReq(SVnodeMgmt *pMgmt, SRpcMsg *pMsg);
+int32_t vmProcessAlterVnodeTypeReq(SVnodeMgmt *pMgmt, SRpcMsg *pMsg);
+int32_t vmProcessCheckLearnCatchupReq(SVnodeMgmt *pMgmt, SRpcMsg *pMsg);
 
 // vmFile.c
 int32_t     vmGetVnodeListFromFile(SVnodeMgmt *pMgmt, SWrapperCfg **ppCfgs, int32_t *numOfVnodes);

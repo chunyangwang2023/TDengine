@@ -18,6 +18,9 @@
 #include "tcoding.h"
 
 // todo refactor API
+#define BOUNDARY_SIZE 1024*1024*1024   // 1G
+#define BOUNDARY_SMALL_FACTOR 1.2
+#define BOUNDARY_BIG_FACTOR 2
 
 SArray* taosArrayInit(size_t size, size_t elemSize) {
   if (elemSize == 0) {
@@ -85,9 +88,13 @@ static int32_t taosArrayResize(SArray* pArray) {
 
 int32_t taosArrayEnsureCap(SArray* pArray, size_t newCap) {
   if (newCap > pArray->capacity) {
-    size_t tsize = (pArray->capacity << 1u);
+    float factor = BOUNDARY_BIG_FACTOR;
+    if(newCap * pArray->elemSize > BOUNDARY_SIZE){
+      factor = BOUNDARY_SMALL_FACTOR;
+    }
+    size_t tsize = (pArray->capacity * factor);
     while (newCap > tsize) {
-      tsize = (tsize << 1u);
+      tsize = (tsize * factor);
     }
 
     pArray->pData = taosMemoryRealloc(pArray->pData, tsize * pArray->elemSize);
@@ -191,7 +198,7 @@ void* taosArrayGet(const SArray* pArray, size_t index) {
   }
 
   if (index >= pArray->size) {
-    uError("index is out of range, current:%"PRIzu" max:%d", index, pArray->capacity);
+    uError("index is out of range, current:%" PRIzu " max:%d", index, pArray->capacity);
     return NULL;
   }
 
@@ -221,7 +228,7 @@ size_t taosArrayGetSize(const SArray* pArray) {
   return TARRAY_SIZE(pArray);
 }
 
-void* taosArrayInsert(SArray* pArray, size_t index, void* pData) {
+void* taosArrayInsert(SArray* pArray, size_t index, const void* pData) {
   if (pArray == NULL || pData == NULL) {
     return NULL;
   }
@@ -319,7 +326,7 @@ SArray* taosArrayDup(const SArray* pSrc, __array_item_dup_fn_t fn) {
   if (NULL == pSrc) {
     return NULL;
   }
-  
+
   if (pSrc->size == 0) {  // empty array list
     return taosArrayInit(8, pSrc->elemSize);
   }
@@ -360,6 +367,23 @@ void taosArrayClearEx(SArray* pArray, void (*fp)(void*)) {
 
   pArray->size = 0;
 }
+void taosArrayClearP(SArray* pArray, void (*fp)(void*)) {
+  // if (pArray == NULL) return;
+  // if (fp == NULL) {
+  //   pArray->size = 0;
+  //   return;
+  // }
+
+  // for (int32_t i = 0; i < pArray->size; ++i) {
+  //   fp(TARRAY_GET_ELEM(pArray, i));
+  // }
+  if (pArray) {
+    for (int32_t i = 0; i < pArray->size; i++) {
+      fp(*(void**)TARRAY_GET_ELEM(pArray, i));
+    }
+  }
+  taosArrayClear(pArray);
+}
 
 void* taosArrayDestroy(SArray* pArray) {
   if (pArray) {
@@ -398,6 +422,10 @@ void taosArrayDestroyEx(SArray* pArray, FDelete fp) {
 
 void taosArraySort(SArray* pArray, __compar_fn_t compar) {
   taosSort(pArray->pData, pArray->size, pArray->elemSize, compar);
+}
+
+int32_t taosArrayMSort(SArray* pArray, __compar_fn_t compar) {
+  return taosMergeSort(pArray->pData, pArray->size, pArray->elemSize, compar);
 }
 
 void* taosArraySearch(const SArray* pArray, const void* key, __compar_fn_t comparFn, int32_t flags) {
@@ -476,13 +504,13 @@ int32_t taosEncodeArray(void** buf, const SArray* pArray, FEncode encode) {
   return tlen;
 }
 
-void* taosDecodeArray(const void* buf, SArray** pArray, FDecode decode, int32_t dataSz) {
+void* taosDecodeArray(const void* buf, SArray** pArray, FDecode decode, int32_t dataSz, int8_t sver) {
   int32_t sz;
   buf = taosDecodeFixedI32(buf, &sz);
   *pArray = taosArrayInit(sz, sizeof(void*));
   for (int32_t i = 0; i < sz; i++) {
     void* data = taosMemoryCalloc(1, dataSz);
-    buf = decode(buf, data);
+    buf = decode(buf, data, sver);
     taosArrayPush(*pArray, &data);
   }
   return (void*)buf;
@@ -492,7 +520,7 @@ void* taosDecodeArray(const void* buf, SArray** pArray, FDecode decode, int32_t 
 // order array<type *>
 void taosArraySortPWithExt(SArray* pArray, __ext_compar_fn_t fn, const void* param) {
   taosqsort(pArray->pData, pArray->size, pArray->elemSize, param, fn);
-//  taosArrayGetSize(pArray) > 8 ? taosArrayQuickSort(pArray, fn, param) : taosArrayInsertSort(pArray, fn, param);
+  //  taosArrayGetSize(pArray) > 8 ? taosArrayQuickSort(pArray, fn, param) : taosArrayInsertSort(pArray, fn, param);
 }
 
 void taosArraySwap(SArray* a, SArray* b) {

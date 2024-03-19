@@ -241,13 +241,13 @@ static int32_t createTableDataCxt(STableMeta* pTableMeta, SVCreateTbReq** pCreat
     if (NULL == pTableCxt->pData) {
       code = TSDB_CODE_OUT_OF_MEMORY;
     } else {
-      pTableCxt->pData->flags = NULL != *pCreateTbReq ? SUBMIT_REQ_AUTO_CREATE_TABLE : 0;
+      pTableCxt->pData->flags = (pCreateTbReq != NULL && NULL != *pCreateTbReq) ? SUBMIT_REQ_AUTO_CREATE_TABLE : 0;
       pTableCxt->pData->flags |= colMode ? SUBMIT_REQ_COLUMN_DATA_FORMAT : 0;
       pTableCxt->pData->suid = pTableMeta->suid;
       pTableCxt->pData->uid = pTableMeta->uid;
       pTableCxt->pData->sver = pTableMeta->sversion;
-      pTableCxt->pData->pCreateTbReq = *pCreateTbReq;
-      *pCreateTbReq = NULL;
+      pTableCxt->pData->pCreateTbReq = pCreateTbReq != NULL ? *pCreateTbReq : NULL;
+      if(pCreateTbReq != NULL) *pCreateTbReq = NULL;
       if (pTableCxt->pData->flags & SUBMIT_REQ_COLUMN_DATA_FORMAT) {
         pTableCxt->pData->aCol = taosArrayInit(128, sizeof(SColData));
         if (NULL == pTableCxt->pData->aCol) {
@@ -271,6 +271,49 @@ static int32_t createTableDataCxt(STableMeta* pTableMeta, SVCreateTbReq** pCreat
 
   return code;
 }
+
+static int32_t rebuildTableData(SSubmitTbData* pSrc, SSubmitTbData** pDst) {
+  int32_t code = TSDB_CODE_SUCCESS;
+  SSubmitTbData* pTmp = taosMemoryCalloc(1, sizeof(SSubmitTbData));
+  if (NULL == pTmp) {
+    code = TSDB_CODE_OUT_OF_MEMORY;
+  } else {
+    pTmp->flags = pSrc->flags;
+    pTmp->suid = pSrc->suid;
+    pTmp->uid = pSrc->uid;
+    pTmp->sver = pSrc->sver;
+    pTmp->pCreateTbReq = NULL;
+    if (pTmp->flags & SUBMIT_REQ_AUTO_CREATE_TABLE) {
+      if (pSrc->pCreateTbReq) {
+        cloneSVreateTbReq(pSrc->pCreateTbReq, &pTmp->pCreateTbReq);
+      } else {
+        pTmp->flags &= ~SUBMIT_REQ_AUTO_CREATE_TABLE;
+      }
+    }
+
+    if (pTmp->flags & SUBMIT_REQ_COLUMN_DATA_FORMAT) {
+      pTmp->aCol = taosArrayInit(128, sizeof(SColData));
+      if (NULL == pTmp->aCol) {
+        code = TSDB_CODE_OUT_OF_MEMORY;
+        taosMemoryFree(pTmp);
+      }
+    } else {
+      pTmp->aRowP = taosArrayInit(128, POINTER_BYTES);
+      if (NULL == pTmp->aRowP) {
+        code = TSDB_CODE_OUT_OF_MEMORY;
+        taosMemoryFree(pTmp);
+      }
+    }
+  }
+
+  taosMemoryFree(pSrc);
+  if (TSDB_CODE_SUCCESS == code) {
+    *pDst = pTmp;
+  }
+  
+  return code;
+}
+
 
 static void resetColValues(SArray* pValues) {
   int32_t num = taosArrayGetSize(pValues);
@@ -298,8 +341,8 @@ int32_t insGetTableDataCxt(SHashObj* pHash, void* id, int32_t idLen, STableMeta*
 
 static void destroyColVal(void* p) {
   SColVal* pVal = p;
-  if (TSDB_DATA_TYPE_NCHAR == pVal->type) {
-    taosMemoryFree(pVal->value.pData);
+  if (TSDB_DATA_TYPE_NCHAR == pVal->type || TSDB_DATA_TYPE_GEOMETRY == pVal->type || TSDB_DATA_TYPE_VARBINARY == pVal->type) {
+    taosMemoryFreeClear(pVal->value.pData);
   }
 }
 
@@ -308,7 +351,9 @@ void insDestroyTableDataCxt(STableDataCxt* pTableCxt) {
     return;
   }
 
-  taosMemoryFreeClear(pTableCxt->pMeta);
+  if (!pTableCxt->metaPointer) {
+    taosMemoryFreeClear(pTableCxt->pMeta);
+  }
   tDestroyTSchema(pTableCxt->pSchema);
   insDestroyBoundColInfo(&pTableCxt->boundColsInfo);
   taosArrayDestroyEx(pTableCxt->pValues, destroyColVal);
@@ -373,15 +418,21 @@ void insDestroyTableDataCxtHashMap(SHashObj* pTableCxtHash) {
   taosHashCleanup(pTableCxtHash);
 }
 
-static int32_t fillVgroupDataCxt(STableDataCxt* pTableCxt, SVgroupDataCxt* pVgCxt) {
+static int32_t fillVgroupDataCxt(STableDataCxt* pTableCxt, SVgroupDataCxt* pVgCxt, bool isRebuild) {
   if (NULL == pVgCxt->pData->aSubmitTbData) {
     pVgCxt->pData->aSubmitTbData = taosArrayInit(128, sizeof(SSubmitTbData));
     if (NULL == pVgCxt->pData->aSubmitTbData) {
       return TSDB_CODE_OUT_OF_MEMORY;
     }
   }
+
+  // push data to submit, rebuild empty data for next submit
   taosArrayPush(pVgCxt->pData->aSubmitTbData, pTableCxt->pData);
-  taosMemoryFreeClear(pTableCxt->pData);
+  if (isRebuild) {
+    rebuildTableData(pTableCxt->pData, &pTableCxt->pData);
+  } else {
+    taosMemoryFreeClear(pTableCxt->pData);
+  }
 
   qDebug("add tableDataCxt uid:%" PRId64 " to vgId:%d", pTableCxt->pMeta->uid, pVgCxt->vgId);
 
@@ -424,7 +475,7 @@ int insColDataComp(const void* lp, const void* rp) {
   return 0;
 }
 
-int32_t insMergeTableDataCxt(SHashObj* pTableHash, SArray** pVgDataBlocks) {
+int32_t insMergeTableDataCxt(SHashObj* pTableHash, SArray** pVgDataBlocks, bool isRebuild) {
   SHashObj* pVgroupHash = taosHashInit(128, taosGetDefaultHashFunction(TSDB_DATA_TYPE_INT), true, false);
   SArray*   pVgroupList = taosArrayInit(8, POINTER_BYTES);
   if (NULL == pVgroupHash || NULL == pVgroupList) {
@@ -459,10 +510,17 @@ int32_t insMergeTableDataCxt(SHashObj* pTableHash, SArray** pVgDataBlocks) {
 
       tColDataSortMerge(pTableCxt->pData->aCol);
     } else {
+      // skip the table has no data to insert
+      // eg: import a csv without valid data
+      // if (0 == taosArrayGetSize(pTableCxt->pData->aRowP)) {
+      //   qWarn("no row in tableDataCxt uid:%" PRId64 " ", pTableCxt->pMeta->uid);
+      //   p = taosHashIterate(pTableHash, p);
+      //   continue;
+      // }
       if (!pTableCxt->ordered) {
-        tRowSort(pTableCxt->pData->aRowP);
+        code = tRowSort(pTableCxt->pData->aRowP);
       }
-      if (!pTableCxt->ordered || pTableCxt->duplicateTs) {
+      if (code == TSDB_CODE_SUCCESS && (!pTableCxt->ordered || pTableCxt->duplicateTs)) {
         code = tRowMerge(pTableCxt->pData->aRowP, pTableCxt->pSchema, 0);
       }
     }
@@ -477,7 +535,7 @@ int32_t insMergeTableDataCxt(SHashObj* pTableHash, SArray** pVgDataBlocks) {
         pVgCxt = *(SVgroupDataCxt**)pp;
       }
       if (TSDB_CODE_SUCCESS == code) {
-        code = fillVgroupDataCxt(pTableCxt, pVgCxt);
+        code = fillVgroupDataCxt(pTableCxt, pVgCxt, isRebuild);
       }
     }
     if (TSDB_CODE_SUCCESS == code) {
@@ -576,12 +634,12 @@ static bool findFileds(SSchema* pSchema, TAOS_FIELD* fields, int numFields) {
   return false;
 }
 
-int rawBlockBindData(SQuery* query, STableMeta* pTableMeta, void* data, SVCreateTbReq* pCreateTb, TAOS_FIELD* tFields,
+int rawBlockBindData(SQuery* query, STableMeta* pTableMeta, void* data, SVCreateTbReq** pCreateTb, TAOS_FIELD* tFields,
                      int numFields, bool needChangeLength) {
   void* tmp = taosHashGet(((SVnodeModifyOpStmt*)(query->pRoot))->pTableBlockHashObj, &pTableMeta->uid, sizeof(pTableMeta->uid));
   STableDataCxt* pTableCxt = NULL;
   int            ret = insGetTableDataCxt(((SVnodeModifyOpStmt*)(query->pRoot))->pTableBlockHashObj, &pTableMeta->uid,
-                                          sizeof(pTableMeta->uid), pTableMeta, &pCreateTb, &pTableCxt, true);
+                                          sizeof(pTableMeta->uid), pTableMeta, pCreateTb, &pTableCxt, true);
   if (ret != TSDB_CODE_SUCCESS) {
     uError("insGetTableDataCxt error");
     goto end;
@@ -598,6 +656,7 @@ int rawBlockBindData(SQuery* query, STableMeta* pTableMeta, void* data, SVCreate
   char* p = (char*)data;
   // | version | total length | total rows | total columns | flag seg| block group id | column schema | each column
   // length |
+  int32_t version = *(int32_t*)data;
   p += sizeof(int32_t);
   p += sizeof(int32_t);
 
@@ -648,10 +707,12 @@ int rawBlockBindData(SQuery* query, STableMeta* pTableMeta, void* data, SVCreate
         pStart += BitmapLen(numOfRows);
       }
       char* pData = pStart;
-
-      tColDataAddValueByDataBlock(pCol, pColSchema->type, pColSchema->bytes, numOfRows, offset, pData);
+      ret = tColDataAddValueByDataBlock(pCol, pColSchema->type, pColSchema->bytes, numOfRows, offset, pData);
+      if(ret != 0){
+        goto end;
+      }
       fields += sizeof(int8_t) + sizeof(int32_t);
-      if (needChangeLength) {
+      if (needChangeLength && version == BLOCK_VERSION_1) {
         pStart += htonl(colLength[j]);
       } else {
         pStart += colLength[j];
@@ -677,9 +738,12 @@ int rawBlockBindData(SQuery* query, STableMeta* pTableMeta, void* data, SVCreate
           char* pData = pStart;
 
           SColData* pCol = taosArrayGet(pTableCxt->pData->aCol, j);
-          tColDataAddValueByDataBlock(pCol, pColSchema->type, pColSchema->bytes, numOfRows, offset, pData);
+          ret = tColDataAddValueByDataBlock(pCol, pColSchema->type, pColSchema->bytes, numOfRows, offset, pData);
+          if(ret != 0){
+            goto end;
+          }
           fields += sizeof(int8_t) + sizeof(int32_t);
-          if (needChangeLength) {
+          if (needChangeLength && version == BLOCK_VERSION_1) {
             pStart += htonl(colLength[i]);
           } else {
             pStart += colLength[i];
@@ -694,7 +758,10 @@ int rawBlockBindData(SQuery* query, STableMeta* pTableMeta, void* data, SVCreate
     for (int c = 0; c < boundInfo->numOfBound; ++c) {
       if( boundInfo->pColIndex[c] != -1){
         SColData* pCol = taosArrayGet(pTableCxt->pData->aCol, c);
-        tColDataAddValueByDataBlock(pCol, 0, 0, numOfRows, NULL, NULL);
+        ret = tColDataAddValueByDataBlock(pCol, 0, 0, numOfRows, NULL, NULL);
+        if(ret != 0){
+          goto end;
+        }
       }else{
         boundInfo->pColIndex[c] = c;  // restore for next block
       }

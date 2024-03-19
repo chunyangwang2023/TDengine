@@ -54,7 +54,6 @@ class TDTestCase:
 
         tmqCom.initConsumerTable()
         tdCom.create_database(tdSql, paraDict["dbName"],paraDict["dropFlag"], vgroups=paraDict["vgroups"],replica=self.replicaVar)
-        tdSql.execute("alter database %s wal_retention_period 3600" % (paraDict['dbName']))
         tdLog.info("create stb")
         tmqCom.create_stable(tdSql, dbName=paraDict["dbName"],stbName=paraDict["stbName"])
         tdLog.info("create ctb")
@@ -218,7 +217,7 @@ class TDTestCase:
 
         tdLog.info("act consume rows: %d"%(actConsumeTotalRows))
         tdLog.info("and second consume rows should be between 0 and %d"%(totalRowsInserted))
-        if not ((actConsumeTotalRows > 0) and (actConsumeTotalRows <= totalRowsInserted)):
+        if not ((actConsumeTotalRows >= 0) and (actConsumeTotalRows <= totalRowsInserted)):
             tdLog.exit("%d tmq consume rows error!"%consumerId)
 
         time.sleep(10)

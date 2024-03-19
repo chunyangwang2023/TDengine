@@ -22,6 +22,14 @@ SHOW CLUSTER;
 
 显示当前集群的信息
 
+## SHOW CLUSTER ALIVE
+
+```sql
+SHOW CLUSTER ALIVE;
+```
+
+查询当前集群的状态是否可用，返回值： 0：不可用 1：完全可用 2：部分可用（集群中部分节点下线，但其它节点仍可以正常使用）
+
 ## SHOW CONNECTIONS
 
 ```sql
@@ -36,7 +44,7 @@ SHOW CONNECTIONS;
 SHOW CONSUMERS;
 ```
 
-显示当前数据库下所有活跃的消费者的信息。
+显示当前数据库下所有消费者的信息。
 
 ## SHOW CREATE DATABASE
 
@@ -101,6 +109,7 @@ SHOW GRANTS;
 
 ```sql
 SHOW INDEXES FROM tbl_name [FROM db_name];
+SHOW INDEXES FROM [db_name.]tbl_name;
 ```
 
 显示已创建的索引。
@@ -128,6 +137,14 @@ SHOW QNODES;
 ```
 
 显示当前系统中 QNODE （查询节点）的信息。
+
+## SHOW QUERIES
+
+```sql
+SHOW QUERIES;
+```
+
+显示当前系统中正在进行的查询。
 
 ## SHOW SCORES
 
@@ -261,6 +278,7 @@ Query OK, 24 row(s) in set (0.002444s)
 
 ```sql
 SHOW TAGS FROM child_table_name [FROM db_name];
+SHOW TAGS FROM [db_name.]child_table_name;
 ```
 
 显示子表的标签信息。
@@ -309,7 +327,7 @@ SHOW [db_name.]VGROUPS;
 ## SHOW VNODES
 
 ```sql
-SHOW VNODES {dnode_id | dnode_endpoint};
+SHOW VNODES [ON DNODE dnode_id];
 ```
 
 显示当前系统中所有 VNODE 或某个 DNODE 的 VNODE 的信息。

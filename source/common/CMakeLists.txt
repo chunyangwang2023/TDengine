@@ -1,4 +1,8 @@
 aux_source_directory(src COMMON_SRC)
+IF (TD_ENTERPRISE)
+LIST(APPEND COMMON_SRC ${TD_ENTERPRISE_DIR}/src/plugins/common/src/tglobal.c)
+ENDIF()
+
 add_library(common STATIC ${COMMON_SRC})
 
 if (DEFINED GRANT_CFG_INCLUDE_DIR)
@@ -12,6 +16,14 @@ ENDIF ()
 IF (TD_STORAGE)
   ADD_DEFINITIONS(-D_STORAGE)
   TARGET_LINK_LIBRARIES(common PRIVATE storage)
+
+  IF(${TD_LINUX})
+    IF(${BUILD_WITH_COS})
+      add_definitions(-DUSE_COS)
+    ENDIF(${BUILD_WITH_COS})
+
+  ENDIF(${TD_LINUX})
+
 ENDIF ()
 
 target_include_directories(

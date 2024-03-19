@@ -29,7 +29,7 @@ class TDTestCase:
                 'rowsPerTbl': 10000,
                 'batchNum':   2000,
                 'startTs':    1640966400000,  # 2022-01-01 00:00:00.000
-                'pollDelay':  20,
+                'pollDelay':  50,
                 'showMsg':    1,
                 'showRow':    1}
 
@@ -45,7 +45,7 @@ class TDTestCase:
     autoCommitInterval = 'auto.commit.interval.ms:1000'
     autoOffset = 'auto.offset.reset:earliest'
 
-    pollDelay = 20
+    pollDelay = 50
     showMsg   = 1
     showRow   = 1
 
@@ -64,7 +64,6 @@ class TDTestCase:
         tmqCom.initConsumerTable(self.cdbName)
 
         tdCom.create_database(tdSql,self.paraDict["dbName"],self.paraDict["dropFlag"])
-        tdSql.execute("alter database %s wal_retention_period 3600" % (self.paraDict['dbName']))
 
         self.paraDict["stbName"] = 'stb1'
         tdCom.create_stable(tdSql,dbname=self.paraDict["dbName"],stbname=self.paraDict["stbName"],column_elm_list=self.paraDict["colSchema"],tag_elm_list=self.paraDict["tagSchema"],count=1, default_stbname_prefix=self.paraDict["stbName"])

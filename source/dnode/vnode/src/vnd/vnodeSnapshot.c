@@ -13,6 +13,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "tsdb.h"
 #include "vnd.h"
 
 // SVSnapReader ========================================================
@@ -29,6 +30,10 @@ struct SVSnapReader {
   // tsdb
   int8_t           tsdbDone;
   STsdbSnapReader *pTsdbReader;
+  // tsdb raw
+  int8_t              tsdbRAWDone;
+  STsdbSnapRAWReader *pTsdbRAWReader;
+
   // tq
   int8_t           tqHandleDone;
   STqSnapReader   *pTqSnapReader;
@@ -44,8 +49,61 @@ struct SVSnapReader {
   SRSmaSnapReader *pRsmaReader;
 };
 
-int32_t vnodeSnapReaderOpen(SVnode *pVnode, int64_t sver, int64_t ever, SVSnapReader **ppReader) {
+static int32_t vnodeSnapReaderDealWithSnapInfo(SVSnapReader *pReader, SSnapshotParam *pParam) {
+  SVnode *pVnode = pReader->pVnode;
+  int32_t code = -1;
+
+  if (pParam->data) {
+    // decode
+    SSyncTLV *datHead = (void *)pParam->data;
+    if (datHead->typ != TDMT_SYNC_PREP_SNAPSHOT_REPLY) {
+      terrno = TSDB_CODE_INVALID_DATA_FMT;
+      goto _out;
+    }
+
+    STsdbRepOpts tsdbOpts = {0};
+    int32_t      offset = 0;
+
+    while (offset + sizeof(SSyncTLV) < datHead->len) {
+      SSyncTLV *subField = (void *)(datHead->val + offset);
+      offset += sizeof(SSyncTLV) + subField->len;
+      void   *buf = subField->val;
+      int32_t bufLen = subField->len;
+
+      switch (subField->typ) {
+        case SNAP_DATA_RAW: {
+          if (tDeserializeTsdbRepOpts(buf, bufLen, &tsdbOpts) < 0) {
+            vError("vgId:%d, failed to deserialize tsdb rep opts since %s", TD_VID(pVnode), terrstr());
+            goto _out;
+          }
+        } break;
+        default:
+          vError("vgId:%d, unexpected subfield type of snap info. typ:%d", TD_VID(pVnode), subField->typ);
+          goto _out;
+      }
+    }
+
+    // toggle snap replication mode
+    vInfo("vgId:%d, vnode snap reader supported tsdb rep of format:%d", TD_VID(pVnode), tsdbOpts.format);
+    if (pReader->sver == 0 && tsdbOpts.format == TSDB_SNAP_REP_FMT_RAW) {
+      pReader->tsdbDone = true;
+    } else {
+      pReader->tsdbRAWDone = true;
+    }
+
+    ASSERT(pReader->tsdbDone != pReader->tsdbRAWDone);
+    vInfo("vgId:%d, vnode snap writer enabled replication mode: %s", TD_VID(pVnode),
+          (pReader->tsdbDone ? "raw" : "normal"));
+  }
+  code = 0;
+_out:
+  return code;
+}
+
+int32_t vnodeSnapReaderOpen(SVnode *pVnode, SSnapshotParam *pParam, SVSnapReader **ppReader) {
   int32_t       code = 0;
+  int64_t       sver = pParam->start;
+  int64_t       ever = pParam->end;
   SVSnapReader *pReader = NULL;
 
   pReader = (SVSnapReader *)taosMemoryCalloc(1, sizeof(*pReader));
@@ -56,6 +114,28 @@ int32_t vnodeSnapReaderOpen(SVnode *pVnode, int64_t sver, int64_t ever, SVSnapRe
   pReader->pVnode = pVnode;
   pReader->sver = sver;
   pReader->ever = ever;
+
+  // snapshot info
+  if (vnodeSnapReaderDealWithSnapInfo(pReader, pParam) < 0) {
+    goto _err;
+  }
+
+  // open tsdb snapshot raw reader
+  if (!pReader->tsdbRAWDone) {
+    ASSERT(pReader->sver == 0);
+    code = tsdbSnapRAWReaderOpen(pVnode->pTsdb, ever, SNAP_DATA_RAW, &pReader->pTsdbRAWReader);
+    if (code) goto _err;
+  }
+
+  // check snapshot ever
+  SSnapshot snapshot = {0};
+  vnodeGetSnapshot(pVnode, &snapshot);
+  if (ever != snapshot.lastApplyIndex) {
+    vError("vgId:%d, abort reader open due to vnode snapshot changed. ever:%" PRId64 ", commit ver:%" PRId64,
+           TD_VID(pVnode), ever, snapshot.lastApplyIndex);
+    code = TSDB_CODE_SYN_INTERNAL_ERROR;
+    goto _err;
+  }
 
   vInfo("vgId:%d, vnode snapshot reader opened, sver:%" PRId64 " ever:%" PRId64, TD_VID(pVnode), sver, ever);
   *ppReader = pReader;
@@ -77,6 +157,10 @@ void vnodeSnapReaderClose(SVSnapReader *pReader) {
     tsdbSnapReaderClose(&pReader->pTsdbReader);
   }
 
+  if (pReader->pTsdbRAWReader) {
+    tsdbSnapRAWReaderClose(&pReader->pTsdbRAWReader);
+  }
+
   if (pReader->pMetaReader) {
     metaSnapReaderClose(&pReader->pMetaReader);
   }
@@ -86,17 +170,18 @@ void vnodeSnapReaderClose(SVSnapReader *pReader) {
 
 int32_t vnodeSnapRead(SVSnapReader *pReader, uint8_t **ppData, uint32_t *nData) {
   int32_t code = 0;
+  SVnode *pVnode = pReader->pVnode;
+  int32_t vgId = TD_VID(pReader->pVnode);
 
   // CONFIG ==============
   // FIXME: if commit multiple times and the config changed?
   if (!pReader->cfgDone) {
-    char fName[TSDB_FILENAME_LEN];
-    if (pReader->pVnode->pTfs) {
-      snprintf(fName, TSDB_FILENAME_LEN, "%s%s%s%s%s", tfsGetPrimaryPath(pReader->pVnode->pTfs), TD_DIRSEP,
-               pReader->pVnode->path, TD_DIRSEP, VND_INFO_FNAME);
-    } else {
-      snprintf(fName, TSDB_FILENAME_LEN, "%s%s%s", pReader->pVnode->path, TD_DIRSEP, VND_INFO_FNAME);
-    }
+    char    fName[TSDB_FILENAME_LEN];
+    int32_t offset = 0;
+
+    vnodeGetPrimaryDir(pVnode->path, pVnode->diskPrimary, pVnode->pTfs, fName, TSDB_FILENAME_LEN);
+    offset = strlen(fName);
+    snprintf(fName + offset, TSDB_FILENAME_LEN - offset - 1, "%s%s", TD_DIRSEP, VND_INFO_FNAME);
 
     TdFilePtr pFile = taosOpenFile(fName, TD_FILE_READ);
     if (NULL == pFile) {
@@ -179,6 +264,28 @@ int32_t vnodeSnapRead(SVSnapReader *pReader, uint8_t **ppData, uint32_t *nData) 
     }
   }
 
+  if (!pReader->tsdbRAWDone) {
+    // open if not
+    if (pReader->pTsdbRAWReader == NULL) {
+      ASSERT(pReader->sver == 0);
+      code = tsdbSnapRAWReaderOpen(pReader->pVnode->pTsdb, pReader->ever, SNAP_DATA_RAW, &pReader->pTsdbRAWReader);
+      if (code) goto _err;
+    }
+
+    code = tsdbSnapRAWRead(pReader->pTsdbRAWReader, ppData);
+    if (code) {
+      goto _err;
+    } else {
+      if (*ppData) {
+        goto _exit;
+      } else {
+        pReader->tsdbRAWDone = 1;
+        code = tsdbSnapRAWReaderClose(&pReader->pTsdbRAWReader);
+        if (code) goto _err;
+      }
+    }
+  }
+
   // TQ ================
   if (!pReader->tqHandleDone) {
     if (pReader->pTqSnapReader == NULL) {
@@ -220,9 +327,57 @@ int32_t vnodeSnapRead(SVSnapReader *pReader, uint8_t **ppData, uint32_t *nData) 
   }
 
   // STREAM ============
+  vInfo("vgId:%d stream task start", vgId);
   if (!pReader->streamTaskDone) {
+    if (pReader->pStreamTaskReader == NULL) {
+      code = streamTaskSnapReaderOpen(pReader->pVnode->pTq, pReader->sver, pReader->sver, &pReader->pStreamTaskReader);
+      if (code) {
+        vError("vgId:%d open streamtask snapshot reader failed, code:%s", vgId, tstrerror(code));
+        goto _err;
+      }
+    }
+
+    code = streamTaskSnapRead(pReader->pStreamTaskReader, ppData);
+    if (code) {
+      vError("vgId:%d error happens during read data from streatask snapshot, code:%s", vgId, tstrerror(code));
+      goto _err;
+    } else {
+      if (*ppData) {
+        vInfo("vgId:%d no streamTask snapshot", vgId);
+        goto _exit;
+      } else {
+        pReader->streamTaskDone = 1;
+        code = streamTaskSnapReaderClose(pReader->pStreamTaskReader);
+        if (code) {
+          goto _err;
+        }
+        pReader->pStreamTaskReader = NULL;
+      }
+    }
   }
   if (!pReader->streamStateDone) {
+    if (pReader->pStreamStateReader == NULL) {
+      code =
+          streamStateSnapReaderOpen(pReader->pVnode->pTq, pReader->sver, pReader->sver, &pReader->pStreamStateReader);
+      if (code) {
+        pReader->streamStateDone = 1;
+        pReader->pStreamStateReader = NULL;
+        goto _err;
+      }
+    }
+    code = streamStateSnapRead(pReader->pStreamStateReader, ppData);
+    if (code) {
+      goto _err;
+    } else {
+      if (*ppData) {
+        goto _exit;
+      } else {
+        pReader->streamStateDone = 1;
+        code = streamStateSnapReaderClose(pReader->pStreamStateReader);
+        if (code) goto _err;
+        pReader->pStreamStateReader = NULL;
+      }
+    }
   }
 
   // RSMA ==============
@@ -257,15 +412,15 @@ _exit:
     pReader->index++;
     *nData = sizeof(SSnapDataHdr) + pHdr->size;
     pHdr->index = pReader->index;
-    vDebug("vgId:%d, vnode snapshot read data, index:%" PRId64 " type:%d blockLen:%d ", TD_VID(pReader->pVnode),
-           pReader->index, pHdr->type, *nData);
+    vDebug("vgId:%d, vnode snapshot read data, index:%" PRId64 " type:%d blockLen:%d ", vgId, pReader->index,
+           pHdr->type, *nData);
   } else {
-    vInfo("vgId:%d, vnode snapshot read data end, index:%" PRId64, TD_VID(pReader->pVnode), pReader->index);
+    vInfo("vgId:%d, vnode snapshot read data end, index:%" PRId64, vgId, pReader->index);
   }
   return code;
 
 _err:
-  vError("vgId:%d, vnode snapshot read failed since %s", TD_VID(pReader->pVnode), tstrerror(code));
+  vError("vgId:%d, vnode snapshot read failed since %s", vgId, tstrerror(code));
   return code;
 }
 
@@ -282,6 +437,8 @@ struct SVSnapWriter {
   SMetaSnapWriter *pMetaSnapWriter;
   // tsdb
   STsdbSnapWriter *pTsdbSnapWriter;
+  // tsdb raw
+  STsdbSnapRAWWriter *pTsdbSnapRAWWriter;
   // tq
   STqSnapWriter   *pTqSnapWriter;
   STqOffsetWriter *pTqOffsetWriter;
@@ -292,13 +449,71 @@ struct SVSnapWriter {
   SRSmaSnapWriter *pRsmaSnapWriter;
 };
 
-int32_t vnodeSnapWriterOpen(SVnode *pVnode, int64_t sver, int64_t ever, SVSnapWriter **ppWriter) {
+static int32_t vnodeSnapWriterDealWithSnapInfo(SVSnapWriter *pWriter, SSnapshotParam *pParam) {
+  SVnode *pVnode = pWriter->pVnode;
+  int32_t code = -1;
+
+  if (pParam->data) {
+    SSyncTLV *datHead = (void *)pParam->data;
+    if (datHead->typ != TDMT_SYNC_PREP_SNAPSHOT_REPLY) {
+      terrno = TSDB_CODE_INVALID_DATA_FMT;
+      goto _out;
+    }
+
+    STsdbRepOpts tsdbOpts = {0};
+    int32_t      offset = 0;
+
+    while (offset + sizeof(SSyncTLV) < datHead->len) {
+      SSyncTLV *subField = (void *)(datHead->val + offset);
+      offset += sizeof(SSyncTLV) + subField->len;
+      void   *buf = subField->val;
+      int32_t bufLen = subField->len;
+
+      switch (subField->typ) {
+        case SNAP_DATA_RAW: {
+          if (tDeserializeTsdbRepOpts(buf, bufLen, &tsdbOpts) < 0) {
+            vError("vgId:%d, failed to deserialize tsdb rep opts since %s", TD_VID(pVnode), terrstr());
+            goto _out;
+          }
+        } break;
+        default:
+          vError("vgId:%d, unexpected subfield type of snap info. typ:%d", TD_VID(pVnode), subField->typ);
+          goto _out;
+      }
+    }
+
+    vInfo("vgId:%d, vnode snap writer supported tsdb rep of format:%d", TD_VID(pVnode), tsdbOpts.format);
+  }
+
+  code = 0;
+_out:
+  return code;
+}
+
+extern int32_t tsdbDisableAndCancelAllBgTask(STsdb *pTsdb);
+extern int32_t tsdbEnableBgTask(STsdb *pTsdb);
+
+static int32_t vnodeCancelAndDisableAllBgTask(SVnode *pVnode) {
+  tsdbDisableAndCancelAllBgTask(pVnode->pTsdb);
+  vnodeSyncCommit(pVnode);
+  vnodeAChannelDestroy(vnodeAsyncHandle[0], pVnode->commitChannel, true);
+  return 0;
+}
+
+static int32_t vnodeEnableBgTask(SVnode *pVnode) {
+  tsdbEnableBgTask(pVnode->pTsdb);
+  vnodeAChannelInit(vnodeAsyncHandle[0], &pVnode->commitChannel);
+  return 0;
+}
+
+int32_t vnodeSnapWriterOpen(SVnode *pVnode, SSnapshotParam *pParam, SVSnapWriter **ppWriter) {
   int32_t       code = 0;
+  int64_t       sver = pParam->start;
+  int64_t       ever = pParam->end;
   SVSnapWriter *pWriter = NULL;
 
-  // commit memory data
-  vnodeAsyncCommit(pVnode);
-  tsem_wait(&pVnode->canCommit);
+  // cancel and disable all bg task
+  vnodeCancelAndDisableAllBgTask(pVnode);
 
   // alloc
   pWriter = (SVSnapWriter *)taosMemoryCalloc(1, sizeof(*pWriter));
@@ -312,6 +527,11 @@ int32_t vnodeSnapWriterOpen(SVnode *pVnode, int64_t sver, int64_t ever, SVSnapWr
 
   // inc commit ID
   pWriter->commitID = ++pVnode->state.commitID;
+
+  // snapshot info
+  if (vnodeSnapWriterDealWithSnapInfo(pWriter, pParam) < 0) {
+    goto _err;
+  }
 
   vInfo("vgId:%d, vnode snapshot writer opened, sver:%" PRId64 " ever:%" PRId64 " commit id:%" PRId64, TD_VID(pVnode),
         sver, ever, pWriter->commitID);
@@ -333,8 +553,13 @@ int32_t vnodeSnapWriterClose(SVSnapWriter *pWriter, int8_t rollback, SSnapshot *
     tsdbSnapWriterPrepareClose(pWriter->pTsdbSnapWriter);
   }
 
+  if (pWriter->pTsdbSnapRAWWriter) {
+    tsdbSnapRAWWriterPrepareClose(pWriter->pTsdbSnapRAWWriter);
+  }
+
   // commit json
   if (!rollback) {
+    ASSERT(pVnode->config.vgId == pWriter->info.config.vgId);
     pWriter->info.state.committed = pWriter->ever;
     pVnode->config = pWriter->info.config;
     pVnode->state = (SVState){.committed = pWriter->info.state.committed,
@@ -344,11 +569,7 @@ int32_t vnodeSnapWriterClose(SVSnapWriter *pWriter, int8_t rollback, SSnapshot *
                               .applyTerm = pWriter->info.state.commitTerm};
     pVnode->statis = pWriter->info.statis;
     char dir[TSDB_FILENAME_LEN] = {0};
-    if (pWriter->pVnode->pTfs) {
-      snprintf(dir, TSDB_FILENAME_LEN, "%s%s%s", tfsGetPrimaryPath(pVnode->pTfs), TD_DIRSEP, pVnode->path);
-    } else {
-      snprintf(dir, TSDB_FILENAME_LEN, "%s", pWriter->pVnode->path);
-    }
+    vnodeGetPrimaryDir(pVnode->path, pVnode->diskPrimary, pVnode->pTfs, dir, TSDB_FILENAME_LEN);
 
     vnodeCommitInfo(dir);
   } else {
@@ -366,6 +587,25 @@ int32_t vnodeSnapWriterClose(SVSnapWriter *pWriter, int8_t rollback, SSnapshot *
     if (code) goto _exit;
   }
 
+  if (pWriter->pTsdbSnapRAWWriter) {
+    code = tsdbSnapRAWWriterClose(&pWriter->pTsdbSnapRAWWriter, rollback);
+    if (code) goto _exit;
+  }
+
+  if (pWriter->pStreamTaskWriter) {
+    code = streamTaskSnapWriterClose(pWriter->pStreamTaskWriter, rollback);
+    if (code) goto _exit;
+  }
+
+  if (pWriter->pStreamStateWriter) {
+    code = streamStateSnapWriterClose(pWriter->pStreamStateWriter, rollback);
+    if (code) goto _exit;
+
+    code = streamStateRebuildFromSnap(pWriter->pStreamStateWriter, 0);
+    pWriter->pStreamStateWriter = NULL;
+    if (code) goto _exit;
+  }
+
   if (pWriter->pRsmaSnapWriter) {
     code = rsmaSnapWriterClose(&pWriter->pRsmaSnapWriter, rollback);
     if (code) goto _exit;
@@ -380,13 +620,13 @@ _exit:
     vInfo("vgId:%d, vnode snapshot writer closed, rollback:%d", TD_VID(pVnode), rollback);
     taosMemoryFree(pWriter);
   }
-  tsem_post(&pVnode->canCommit);
+  vnodeEnableBgTask(pVnode);
   return code;
 }
 
 static int32_t vnodeSnapWriteInfo(SVSnapWriter *pWriter, uint8_t *pData, uint32_t nData) {
-  int32_t code = 0;
-
+  int32_t       code = 0;
+  SVnode       *pVnode = pWriter->pVnode;
   SSnapDataHdr *pHdr = (SSnapDataHdr *)pData;
 
   // decode info
@@ -400,15 +640,9 @@ static int32_t vnodeSnapWriteInfo(SVSnapWriter *pWriter, uint8_t *pData, uint32_
 
   // modify info as needed
   char dir[TSDB_FILENAME_LEN] = {0};
-  if (pWriter->pVnode->pTfs) {
-    snprintf(dir, TSDB_FILENAME_LEN, "%s%s%s", tfsGetPrimaryPath(pWriter->pVnode->pTfs), TD_DIRSEP,
-             pWriter->pVnode->path);
-  } else {
-    snprintf(dir, TSDB_FILENAME_LEN, "%s", pWriter->pVnode->path);
-  }
+  vnodeGetPrimaryDir(pVnode->path, pVnode->diskPrimary, pVnode->pTfs, dir, TSDB_FILENAME_LEN);
 
   SVnodeStats vndStats = pWriter->info.config.vndStats;
-  SVnode     *pVnode = pWriter->pVnode;
   pWriter->info.config = pVnode->config;
   pWriter->info.config.vndStats = vndStats;
   vDebug("vgId:%d, save config while write snapshot", pWriter->pVnode->config.vgId);
@@ -465,13 +699,38 @@ int32_t vnodeSnapWrite(SVSnapWriter *pWriter, uint8_t *pData, uint32_t nData) {
       code = tsdbSnapWrite(pWriter->pTsdbSnapWriter, pHdr);
       if (code) goto _err;
     } break;
+    case SNAP_DATA_RAW: {
+      // tsdb
+      if (pWriter->pTsdbSnapRAWWriter == NULL) {
+        ASSERT(pWriter->sver == 0);
+        code = tsdbSnapRAWWriterOpen(pVnode->pTsdb, pWriter->ever, &pWriter->pTsdbSnapRAWWriter);
+        if (code) goto _err;
+      }
+
+      code = tsdbSnapRAWWrite(pWriter->pTsdbSnapRAWWriter, pHdr);
+      if (code) goto _err;
+    } break;
     case SNAP_DATA_TQ_HANDLE: {
     } break;
     case SNAP_DATA_TQ_OFFSET: {
     } break;
-    case SNAP_DATA_STREAM_TASK: {
+    case SNAP_DATA_STREAM_TASK:
+    case SNAP_DATA_STREAM_TASK_CHECKPOINT: {
+      if (pWriter->pStreamTaskWriter == NULL) {
+        code = streamTaskSnapWriterOpen(pVnode->pTq, pWriter->sver, pWriter->ever, &pWriter->pStreamTaskWriter);
+        if (code) goto _err;
+      }
+      code = streamTaskSnapWrite(pWriter->pStreamTaskWriter, pData, nData);
+      if (code) goto _err;
     } break;
-    case SNAP_DATA_STREAM_STATE: {
+    case SNAP_DATA_STREAM_STATE_BACKEND: {
+      if (pWriter->pStreamStateWriter == NULL) {
+        code = streamStateSnapWriterOpen(pVnode->pTq, pWriter->sver, pWriter->ever, &pWriter->pStreamStateWriter);
+        if (code) goto _err;
+      }
+      code = streamStateSnapWrite(pWriter->pStreamStateWriter, pData, nData);
+      if (code) goto _err;
+
     } break;
     case SNAP_DATA_RSMA1:
     case SNAP_DATA_RSMA2:

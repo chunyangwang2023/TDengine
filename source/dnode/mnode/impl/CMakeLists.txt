@@ -12,6 +12,7 @@ IF (TD_ENTERPRISE)
   LIST(APPEND MNODE_SRC ${TD_ENTERPRISE_DIR}/src/plugins/privilege/src/privilege.c)
   LIST(APPEND MNODE_SRC ${TD_ENTERPRISE_DIR}/src/plugins/mnode/src/mndDb.c)
   LIST(APPEND MNODE_SRC ${TD_ENTERPRISE_DIR}/src/plugins/mnode/src/mndVgroup.c)
+  LIST(APPEND MNODE_SRC ${TD_ENTERPRISE_DIR}/src/plugins/mnode/src/mndDnode.c)
 ENDIF ()
 
 add_library(mnode STATIC ${MNODE_SRC})
@@ -21,7 +22,7 @@ target_include_directories(
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/inc"
 )
 target_link_libraries(
-    mnode scheduler sdb wal transport cjson sync monitor executor qworker stream parser
+    mnode scheduler sdb wal transport cjson sync monitor executor qworker stream parser audit
 )
 
 IF (TD_GRANT)

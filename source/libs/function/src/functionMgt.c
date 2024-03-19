@@ -219,6 +219,8 @@ bool fmIsKeepOrderFunc(int32_t funcId) { return isSpecificClassifyFunc(funcId, F
 
 bool fmIsCumulativeFunc(int32_t funcId) { return isSpecificClassifyFunc(funcId, FUNC_MGT_CUMULATIVE_FUNC); }
 
+bool fmIsForbidSysTableFunc(int32_t funcId) { return isSpecificClassifyFunc(funcId, FUNC_MGT_FORBID_SYSTABLE_FUNC); }
+
 bool fmIsInterpFunc(int32_t funcId) {
   if (funcId < 0 || funcId >= funcMgtBuiltinsNum) {
     return false;
@@ -334,6 +336,20 @@ bool fmIsSameInOutType(int32_t funcId) {
   return res;
 }
 
+bool fmIsConstantResFunc(SFunctionNode* pFunc) {
+  SNode* pNode;
+  FOREACH(pNode, pFunc->pParameterList) {
+    if (nodeType(pNode) != QUERY_NODE_VALUE) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool fmIsSkipScanCheckFunc(int32_t funcId) {
+  return isSpecificClassifyFunc(funcId, FUNC_MGT_SKIP_SCAN_CHECK_FUNC);
+}
+
 void getLastCacheDataType(SDataType* pType) {
   pType->bytes = getFirstLastInfoSize(pType->bytes) + VARSTR_HEADER_SIZE;
   pType->type = TSDB_DATA_TYPE_BINARY;
@@ -344,7 +360,7 @@ static int32_t getFuncInfo(SFunctionNode* pFunc) {
   return fmGetFuncInfo(pFunc, msg, sizeof(msg));
 }
 
-static SFunctionNode* createFunction(const char* pName, SNodeList* pParameterList) {
+SFunctionNode* createFunction(const char* pName, SNodeList* pParameterList) {
   SFunctionNode* pFunc = (SFunctionNode*)nodesMakeNode(QUERY_NODE_FUNCTION);
   if (NULL == pFunc) {
     return NULL;
@@ -389,8 +405,10 @@ static int32_t createPartialFunction(const SFunctionNode* pSrcFunc, SFunctionNod
     nodesDestroyList(pParameterList);
     return TSDB_CODE_OUT_OF_MEMORY;
   }
-  snprintf((*pPartialFunc)->node.aliasName, sizeof((*pPartialFunc)->node.aliasName), "%s.%p",
-           (*pPartialFunc)->functionName, pSrcFunc);
+  char name[TSDB_FUNC_NAME_LEN + TSDB_NAME_DELIMITER_LEN + TSDB_POINTER_PRINT_BYTES + 1] = {0};
+  int32_t len = snprintf(name, sizeof(name) - 1, "%s.%p", (*pPartialFunc)->functionName, pSrcFunc);
+  taosCreateMD5Hash(name, len);
+  strncpy((*pPartialFunc)->node.aliasName, name, TSDB_COL_NAME_LEN - 1);
   return TSDB_CODE_SUCCESS;
 }
 

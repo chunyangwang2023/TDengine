@@ -42,7 +42,7 @@ release_dir="${top_dir}/release"
 
 #package_name='linux'
 if [ "$verMode" == "cluster" ]; then
-  install_dir="${release_dir}/${productName2}-enterprise-server-${version}"
+  install_dir="${release_dir}/${productName2}-enterprise-${version}"
 elif [ "$verMode" == "cloud" ]; then
   install_dir="${release_dir}/${productName2}-cloud-server-${version}"
 else
@@ -89,17 +89,13 @@ else
       ${build_dir}/bin/taosBenchmark \
       ${build_dir}/bin/TDinsight.sh \
       ${build_dir}/bin/tdengine-datasource.zip \
-      ${build_dir}/bin/tdengine-datasource.zip.md5sum"
+      ${build_dir}/bin/tdengine-datasource.zip.md5"
   fi
 
-  [ -f ${build_dir}/bin/taosx ] && taosx_bin="${build_dir}/bin/taosx"
-  explorer_bin_files=$(find ${build_dir}/bin/ -name '*-explorer')
 
   bin_files="${build_dir}/bin/${serverName} \
       ${build_dir}/bin/${clientName} \
       ${taostools_bin_files} \
-      ${taosx_bin} \
-      ${explorer_bin_files} \
       ${build_dir}/bin/${clientName}adapter \
       ${build_dir}/bin/udfd \
       ${script_dir}/remove.sh \
@@ -115,7 +111,7 @@ else
     lib_files="${build_dir}/lib/libtaos.so.${version}"
     wslib_files="${build_dir}/lib/libtaosws.so"
 fi
-header_files="${code_dir}/include/client/taos.h ${code_dir}/include/common/taosdef.h ${code_dir}/include/util/taoserror.h ${code_dir}/include/libs/function/taosudf.h"
+header_files="${code_dir}/include/client/taos.h ${code_dir}/include/common/taosdef.h ${code_dir}/include/util/taoserror.h ${code_dir}/include/util/tdef.h ${code_dir}/include/libs/function/taosudf.h"
 
 wsheader_files="${build_dir}/include/taosws.h"
 
@@ -126,7 +122,6 @@ else
 fi
 
 install_files="${script_dir}/install.sh"
-web_dir="${top_dir}/../enterprise/src/plugins/web"
 
 init_file_deb=${script_dir}/../deb/taosd
 init_file_rpm=${script_dir}/../rpm/taosd
@@ -217,12 +212,12 @@ if [ -f ${build_dir}/bin/jemalloc-config ]; then
     cp ${build_dir}/lib/libjemalloc.so.2 ${install_dir}/jemalloc/lib
     ln -sf libjemalloc.so.2 ${install_dir}/jemalloc/lib/libjemalloc.so
   fi
-  if [ -f ${build_dir}/lib/libjemalloc.a ]; then
-    cp ${build_dir}/lib/libjemalloc.a ${install_dir}/jemalloc/lib
-  fi
-  if [ -f ${build_dir}/lib/libjemalloc_pic.a ]; then
-    cp ${build_dir}/lib/libjemalloc_pic.a ${install_dir}/jemalloc/lib
-  fi
+  # if [ -f ${build_dir}/lib/libjemalloc.a ]; then
+  #   cp ${build_dir}/lib/libjemalloc.a ${install_dir}/jemalloc/lib
+  # fi
+  # if [ -f ${build_dir}/lib/libjemalloc_pic.a ]; then
+  #   cp ${build_dir}/lib/libjemalloc_pic.a ${install_dir}/jemalloc/lib
+  # fi
   if [ -f ${build_dir}/lib/pkgconfig/jemalloc.pc ]; then
     cp ${build_dir}/lib/pkgconfig/jemalloc.pc ${install_dir}/jemalloc/lib/pkgconfig
   fi
@@ -285,8 +280,8 @@ if [ "$pagMode" == "lite" ]; then
 fi
 chmod a+x ${install_dir}/install.sh
 
-if [[ $dbName == "taos" ]]; then
-  # Copy example code
+if [[ $dbName == "taos" ]]; then  
+  # Copy example code  
   mkdir -p ${install_dir}/examples
   examples_dir="${top_dir}/examples"
   cp -r ${examples_dir}/c ${install_dir}/examples
@@ -320,32 +315,26 @@ if [[ $dbName == "taos" ]]; then
     mkdir -p ${install_dir}/examples/taosbenchmark-json && cp ${examples_dir}/../tools/taos-tools/example/* ${install_dir}/examples/taosbenchmark-json
   fi
 
-  # Add web files
-  if [ "$verMode" == "cluster" ] || [ "$verMode" == "cloud" ]; then
-    if [ -d "${web_dir}/admin" ] ; then
-      mkdir -p ${install_dir}/share/
-      cp -Rfap ${web_dir}/admin ${install_dir}/share/
-      cp ${web_dir}/png/taos.png ${install_dir}/share/admin/images/taos.png
-      cp -rf ${build_dir}/share/{etc,srv} ${install_dir}/share ||:
-    else
-      echo "directory not found for enterprise release: ${web_dir}/admin"
-    fi
+  if [ "$verMode" == "cluster" ] || [ "$verMode" == "cloud" ]; then    
+    mkdir -p ${install_dir}/share/        
+    cp -rf ${build_dir}/share/{etc,srv} ${install_dir}/share ||:    
   fi
+
 fi
 
 # Copy driver
 mkdir -p ${install_dir}/driver && cp ${lib_files} ${install_dir}/driver && echo "${versionComp}" >${install_dir}/driver/vercomp.txt
 [ -f ${wslib_files} ] && cp ${wslib_files} ${install_dir}/driver || :
 
-# Copy connector
-if [ "$verMode" == "cluster" ]; then
+# Copy connector && taosx
+if [ "$verMode" == "cluster" ]; then    
     connector_dir="${code_dir}/connector"
     mkdir -p ${install_dir}/connector
     if [[ "$pagMode" != "lite" ]] && [[ "$cpuType" != "aarch32" ]]; then
         tmp_pwd=`pwd`
     	  cd ${install_dir}/connector
     	  if [ ! -d taos-connector-jdbc ];then
-          	git clone -b 3.2.1 --depth=1 https://github.com/taosdata/taos-connector-jdbc.git ||:
+          	git clone -b main --depth=1 https://github.com/taosdata/taos-connector-jdbc.git ||:
     	  fi
     	  cd taos-connector-jdbc
     	  mvn clean package -Dmaven.test.skip=true
@@ -371,8 +360,19 @@ if [ "$verMode" == "cluster" ]; then
         git clone --depth 1 https://github.com/taosdata/taos-connector-rust ${install_dir}/connector/rust
         rm -rf ${install_dir}/connector/rust/.git ||:
 
-        # cp -r ${connector_dir}/python ${install_dir}/connector
-        # cp -r ${connector_dir}/nodejs ${install_dir}/connector
+        cp ${top_dir}/../enterprise/packaging/start-all.sh ${install_dir}
+        cp ${top_dir}/../enterprise/packaging/stop-all.sh ${install_dir}
+        cp ${top_dir}/../enterprise/packaging/README.md ${install_dir}
+        chmod a+x ${install_dir}/start-all.sh
+        chmod a+x ${install_dir}/stop-all.sh
+
+        # copy taosx
+        if [ -d ${top_dir}/../enterprise/src/plugins/taosx/release/taosx ]; then
+          cp -r ${top_dir}/../enterprise/src/plugins/taosx/release/taosx ${install_dir}
+          cp ${top_dir}/../enterprise/packaging/install_taosx.sh ${install_dir}/taosx
+          cp ${top_dir}/../enterprise/src/plugins/taosx/packaging/uninstall.sh ${install_dir}/taosx/uninstall_taosx.sh
+          sed -i 's/target=\"\"/target=\"taosx\"/g' ${install_dir}/taosx/uninstall_taosx.sh
+        fi
     fi
 fi
 
@@ -428,7 +428,7 @@ if [ "$exitcode" != "0" ]; then
   exit $exitcode
 fi
 
-if [ -n "${taostools_bin_files}" ]; then
+if [ -n "${taostools_bin_files}" ] && [ "$verMode" != "cloud" ]; then
     wget https://github.com/taosdata/grafanaplugin/releases/latest/download/TDinsight.sh -O ${taostools_install_dir}/bin/TDinsight.sh && echo "TDinsight.sh downloaded!"|| echo "failed to download TDinsight.sh"
     if [ "$osType" != "Darwin" ]; then
         tar -zcv -f "$(basename ${taostools_pkg_name}).tar.gz" "$(basename ${taostools_install_dir})" --remove-files || :
